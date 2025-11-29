@@ -2,8 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="theme-color" content="#0f0f0f">
+    <meta name="description" content="Galgotias University Examination Announcements - Live Updates">
     <title>DESTINY // EXAMS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Special+Elite&display=swap" rel="stylesheet">
 
     <style>
@@ -15,15 +19,28 @@
             --text-accent: #c5b358; /* Faded Gold */
             --text-graffiti: #8c8c73;
             --border-color: #3e3b32;
+            --summary-bg: rgba(20, 18, 15, 0.95);
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
+        html {
+            scroll-behavior: smooth;
+            -webkit-text-size-adjust: 100%;
+        }
         body {
             background-color: var(--bg-color);
             color: var(--text-primary);
             font-family: 'Special Elite', monospace;
             overflow-x: hidden;
-            height: 100vh;
+            min-height: 100vh;
             display: flex; flex-direction: column; align-items: center;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        /* GPU acceleration for smooth 60fps */
+        .gpu-accelerate {
+            transform: translateZ(0);
+            will-change: transform;
+            backface-visibility: hidden;
         }
         /* Particles */
         #particle-canvas {
@@ -32,8 +49,9 @@
             background: radial-gradient(circle at center, rgba(40,35,30,0.2) 0%, rgba(0,0,0,0.95) 100%);
         }
         .container {
-            width: 90%; max-width: 1000px; margin-top: 5vh; height: 90vh;
+            width: 90%; max-width: 1000px; margin-top: 5vh; min-height: 90vh;
             display: flex; flex-direction: column; gap: 20px; z-index: 10;
+            padding-bottom: 20px;
         }
         header { text-align: center; position: relative; margin-bottom: 20px; }
         h1 {
@@ -55,26 +73,111 @@
             border: 2px solid var(--text-accent); color: var(--text-accent);
             padding: 15px 20px; font-family: 'Special Elite', monospace;
             font-size: 1.2rem; outline: none; text-transform: uppercase;
+            transition: border-color 0.3s ease;
         }
+        #search-input:focus {
+            border-color: #e5d388;
+            box-shadow: 0 0 10px rgba(197, 179, 88, 0.3);
+        }
+        #search-input::placeholder {
+            color: var(--text-graffiti);
+        }
+        /* Loading indicator */
+        .loading-indicator {
+            display: none;
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--text-graffiti);
+            border-top-color: var(--text-accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        .loading-indicator.active { display: block; }
+        @keyframes spin { to { transform: translateY(-50%) rotate(360deg); } }
         /* Results */
         .results-container {
             flex-grow: 1; overflow-y: auto;
             border-top: 1px solid var(--border-color); padding-right: 10px;
+            scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch;
         }
         .results-container::-webkit-scrollbar { width: 6px; }
-        .results-container::-webkit-scrollbar-thumb { background: var(--text-graffiti); }
+        .results-container::-webkit-scrollbar-thumb { background: var(--text-graffiti); border-radius: 3px; }
+        .results-container::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
         .exam-card {
             background: var(--glass-panel); backdrop-filter: blur(5px);
             border-left: 4px solid var(--border-color);
             margin-bottom: 15px; padding: 20px;
-            cursor: pointer; transition: 0.3s;
+            cursor: pointer; 
+            transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+            position: relative;
         }
         .exam-card:hover {
             border-left-color: var(--text-accent);
-            background: rgba(50, 45, 30, 0.8); transform: translateX(5px);
+            background: rgba(50, 45, 30, 0.8); 
+            transform: translateX(5px);
+        }
+        .exam-card:active {
+            transform: translateX(3px) scale(0.99);
+        }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 10px;
         }
         .card-date { font-size: 0.9rem; color: var(--text-graffiti); margin-bottom: 5px; font-weight: bold; }
-        .card-title { font-size: 1.2rem; color: var(--text-primary); }
+        .card-title { font-size: 1.2rem; color: var(--text-primary); flex: 1; }
+        .card-category {
+            font-size: 0.75rem;
+            color: var(--text-accent);
+            background: rgba(197, 179, 88, 0.15);
+            padding: 3px 8px;
+            border-radius: 3px;
+            white-space: nowrap;
+        }
+        /* AI Summary Button */
+        .intel-btn {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(197, 179, 88, 0.2);
+            border: 1px solid var(--text-accent);
+            color: var(--text-accent);
+            padding: 5px 12px;
+            font-family: 'Oswald', sans-serif;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .intel-btn:hover {
+            background: var(--text-accent);
+            color: var(--bg-color);
+        }
+        .intel-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .intel-btn.loading {
+            pointer-events: none;
+        }
+        .intel-btn.loading::after {
+            content: '';
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border: 1px solid currentColor;
+            border-top-color: transparent;
+            border-radius: 50%;
+            margin-left: 5px;
+            animation: spin 0.8s linear infinite;
+        }
 
         /* PDF Modal */
         #pdf-modal {
@@ -82,12 +185,84 @@
             background: rgba(0,0,0,0.95); z-index: 100;
             justify-content: center; align-items: center; flex-direction: column;
         }
-        #pdf-frame { width: 85%; height: 85%; border: 1px solid var(--text-accent); background: #fff; }
-        .close-btn {
-            margin-bottom: 15px; background: transparent; color: var(--text-primary);
-            border: 1px solid var(--text-accent); padding: 5px 20px; cursor: pointer;
-            font-family: 'Oswald'; font-size: 1.2rem;
+        .modal-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
         }
+        #pdf-frame { width: 85%; height: 80%; border: 1px solid var(--text-accent); background: #fff; }
+        .close-btn, .summary-btn {
+            background: transparent; color: var(--text-primary);
+            border: 1px solid var(--text-accent); padding: 8px 20px; cursor: pointer;
+            font-family: 'Oswald', sans-serif; font-size: 1.1rem;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+        }
+        .close-btn:hover, .summary-btn:hover {
+            background: var(--text-accent);
+            color: var(--bg-color);
+        }
+        .summary-btn {
+            background: rgba(197, 179, 88, 0.2);
+        }
+        
+        /* Summary Panel */
+        #summary-panel {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            background: var(--summary-bg);
+            border: 2px solid var(--text-accent);
+            padding: 25px;
+            z-index: 150;
+            overflow-y: auto;
+            box-shadow: 0 0 50px rgba(197, 179, 88, 0.3);
+        }
+        #summary-panel h3 {
+            font-family: 'Oswald', sans-serif;
+            color: var(--text-accent);
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        #summary-content {
+            line-height: 1.8;
+            color: var(--text-primary);
+        }
+        #summary-content .info-row {
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        #summary-content .info-label {
+            color: var(--text-accent);
+            font-weight: bold;
+            display: block;
+            margin-bottom: 3px;
+        }
+        .close-summary-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: none;
+            border: none;
+            color: var(--text-graffiti);
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .close-summary-btn:hover {
+            color: var(--text-accent);
+        }
+        
         /* Hidden Registry */
         #feature-registry {
             display: none; position: fixed; bottom: 20px; left: 20px;
@@ -95,41 +270,162 @@
             color: var(--text-accent); padding: 15px; z-index: 200;
             font-size: 0.8rem; box-shadow: 0 0 15px rgba(197, 179, 88, 0.2);
         }
+        #feature-registry h3 { margin-bottom: 10px; }
+        #feature-registry ul { list-style: none; }
+        #feature-registry li { margin-bottom: 5px; }
+        #feature-registry span { color: var(--text-graffiti); }
+
+        /* --- RESPONSIVE DESIGN --- */
+        
+        /* Mobile devices (16:9 and 20:9 aspect ratios) */
+        @media screen and (max-width: 480px) {
+            h1 { font-size: 2.2rem; letter-spacing: 2px; }
+            .graffiti-tag { font-size: 0.9rem; right: 5%; }
+            .container { width: 95%; margin-top: 2vh; gap: 15px; }
+            #search-input { padding: 12px 15px; font-size: 1rem; }
+            .exam-card { padding: 15px; margin-bottom: 10px; }
+            .card-title { font-size: 1rem; }
+            .card-date { font-size: 0.8rem; }
+            .intel-btn { padding: 4px 8px; font-size: 0.7rem; }
+            #pdf-frame { width: 95%; height: 70%; }
+            .close-btn, .summary-btn { padding: 6px 15px; font-size: 0.9rem; }
+            #summary-panel { width: 95%; padding: 15px; }
+            #summary-panel h3 { font-size: 1.2rem; }
+        }
+
+        /* Tablets */
+        @media screen and (min-width: 481px) and (max-width: 768px) {
+            h1 { font-size: 3rem; }
+            .container { width: 92%; }
+            #search-input { font-size: 1.1rem; }
+            .card-title { font-size: 1.1rem; }
+        }
+
+        /* Large screens / Desktop */
+        @media screen and (min-width: 1200px) {
+            .container { max-width: 1100px; }
+            h1 { font-size: 4.5rem; }
+            .card-title { font-size: 1.3rem; }
+            .card-date { font-size: 1rem; }
+            #search-input { font-size: 1.3rem; padding: 18px 25px; }
+        }
+
+        /* Extra large / Wide screens */
+        @media screen and (min-width: 1600px) {
+            .container { max-width: 1300px; }
+            h1 { font-size: 5rem; letter-spacing: 8px; }
+            .graffiti-tag { font-size: 1.5rem; }
+            .card-title { font-size: 1.5rem; }
+            .card-date { font-size: 1.1rem; }
+            #search-input { font-size: 1.5rem; padding: 20px 30px; }
+            .exam-card { padding: 25px; margin-bottom: 20px; }
+            .intel-btn { padding: 8px 16px; font-size: 1rem; }
+            .close-btn, .summary-btn { font-size: 1.3rem; padding: 10px 25px; }
+        }
+
+        /* Ultra-wide screens */
+        @media screen and (min-width: 2000px) {
+            .container { max-width: 1500px; }
+            h1 { font-size: 6rem; }
+            .card-title { font-size: 1.7rem; }
+            .card-date { font-size: 1.2rem; }
+            #search-input { font-size: 1.7rem; }
+        }
+
+        /* Tall mobile screens (20:9 like modern phones) */
+        @media screen and (max-width: 480px) and (min-aspect-ratio: 9/19) {
+            .container { margin-top: 3vh; }
+            .results-container { max-height: 70vh; }
+        }
+
+        /* Standard mobile (16:9) */
+        @media screen and (max-width: 480px) and (max-aspect-ratio: 9/16) {
+            .results-container { max-height: 65vh; }
+        }
+
+        /* Landscape mobile */
+        @media screen and (max-height: 500px) and (orientation: landscape) {
+            .container { margin-top: 2vh; }
+            h1 { font-size: 2rem; }
+            .results-container { max-height: 50vh; }
+            #pdf-frame { height: 60%; }
+        }
+
+        /* Reduced motion preference */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+            #particle-canvas { display: none; }
+        }
+
+        /* High contrast mode */
+        @media (prefers-contrast: high) {
+            :root {
+                --text-primary: #ffffff;
+                --text-accent: #ffd700;
+                --border-color: #666666;
+            }
+        }
     </style>
 </head>
 <body>
-    <canvas id="particle-canvas"></canvas>
+    <canvas id="particle-canvas" class="gpu-accelerate"></canvas>
 
     <div id="pdf-modal">
-        <button class="close-btn" onclick="closePdf()">[ CLOSE FILE ]</button>
-        <iframe id="pdf-frame"></iframe>
+        <div class="modal-controls">
+            <button class="close-btn" onclick="closePdf()">[ CLOSE FILE ]</button>
+            <button class="summary-btn" onclick="showPdfSummary()" id="modal-summary-btn">[ AI SUMMARY ]</button>
+        </div>
+        <iframe id="pdf-frame" loading="lazy"></iframe>
+    </div>
+
+    <div id="summary-panel">
+        <button class="close-summary-btn" onclick="closeSummary()">&times;</button>
+        <h3>📋 INTEL REPORT</h3>
+        <div id="summary-content">
+            <div class="loading-text">Analyzing document...</div>
+        </div>
     </div>
 
     <div id="feature-registry">
-        <h3>SYSTEM REGISTRY_ v1.3</h3>
+        <h3>SYSTEM REGISTRY_ v2.0</h3>
         <ul>
             <li><span>Status:</span> Live Scraper Active</li>
             <li><span>Theme:</span> Supernatural / Grunge</li>
             <li><span>Admin:</span> Secure Upload Enabled</li>
+            <li><span>AI:</span> PDF Analysis Ready</li>
+            <li><span>Search:</span> FTS5 Enhanced</li>
         </ul>
     </div>
 
     <div class="container">
         <header>
-            <span class="graffiti-tag">angel_wings_v1</span>
+            <span class="graffiti-tag">angel_wings_v2</span>
             <h1>Examination</h1>
-            <button onclick="triggerSync()" style="background:none; border:none; color:#555; cursor:pointer; font-family:'Special Elite';">[ SYNC SERVER ]</button>
+            <button onclick="triggerSync()" id="sync-btn" style="background:none; border:none; color:#555; cursor:pointer; font-family:'Special Elite';">[ SYNC SERVER ]</button>
         </header>
 
         <div class="search-wrapper">
-            <input type="text" id="search-input" placeholder="SEARCH DATABASE..." autocomplete="off">
+            <input type="text" id="search-input" placeholder="SEARCH DATABASE..." autocomplete="off" spellcheck="false">
+            <div class="loading-indicator" id="search-loading"></div>
         </div>
 
         <div class="results-container" id="results-list">
             {% for item in initial_data %}
-            <div class="exam-card" onclick="openPdf('{{ item.url }}')">
-                <div class="card-date">{{ item.date_text }}</div>
-                <div class="card-title">{{ item.title }}</div>
+            <div class="exam-card gpu-accelerate" data-url="{{ item.url }}">
+                <div class="card-header">
+                    <div>
+                        <div class="card-date">{{ item.date_text }}</div>
+                        <div class="card-title">{{ item.title }}</div>
+                    </div>
+                    {% if item.category %}
+                    <span class="card-category">{{ item.category }}</span>
+                    {% endif %}
+                </div>
+                <button class="intel-btn" onclick="event.stopPropagation(); analyzeCard('{{ item.url }}', this)">INTEL</button>
             </div>
             {% endfor %}
 
@@ -140,30 +436,38 @@
     </div>
 
     <script>
+        // --- Performance: Use requestIdleCallback for non-critical tasks ---
+        const scheduleTask = window.requestIdleCallback || ((cb) => setTimeout(cb, 1));
+        
+        // --- State management ---
+        let currentPdfUrl = '';
+        let searchTimeout = null;
+        const SEARCH_DEBOUNCE = 250;  // Faster response
+
         // --- 1. SEARCH & ADMIN CHECK ---
         const searchInput = document.getElementById('search-input');
         const resultsList = document.getElementById('results-list');
-        let timeout = null;
+        const searchLoading = document.getElementById('search-loading');
 
         searchInput.addEventListener('input', (e) => {
-            clearTimeout(timeout);
-            timeout = setTimeout(() => {
-                const q = e.target.value;
+            clearTimeout(searchTimeout);
+            const q = e.target.value;
 
-                // ADMIN LOGIN TRIGGER
-                if(q.toLowerCase() === 'upload') {
+            // ADMIN LOGIN TRIGGER
+            if(q.toLowerCase() === 'upload') {
+                searchTimeout = setTimeout(() => {
                     const creds = prompt("ENTER ADMIN IDENTITY:");
                     if(creds === "Alvido") {
                         alert("ACCESS GRANTED. OPENING UPLOAD PANEL...");
-                        // In real implementation: window.location.href = '/admin/upload';
                     } else {
                         alert("ACCESS DENIED.");
                     }
-                    return;
-                }
+                }, 100);
+                return;
+            }
 
-                fetchResults(q);
-            }, 300);
+            searchLoading.classList.add('active');
+            searchTimeout = setTimeout(() => fetchResults(q), SEARCH_DEBOUNCE);
         });
 
         async function fetchResults(query) {
@@ -171,53 +475,248 @@
                 const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
                 const data = await res.json();
                 renderCards(data);
-            } catch(e) { console.error("Search Error", e); }
+            } catch(e) { 
+                console.error("Search Error", e);
+                resultsList.innerHTML = '<div style="text-align:center; color: #ff6b6b;">[ SEARCH ERROR - TRY AGAIN ]</div>';
+            } finally {
+                searchLoading.classList.remove('active');
+            }
         }
 
         function renderCards(data) {
-            resultsList.innerHTML = '';
+            // Use DocumentFragment for better performance
+            const fragment = document.createDocumentFragment();
+            
             if(data.length === 0) {
                 resultsList.innerHTML = '<div style="text-align:center; color: #666;">[ NO DATA MATCHED ]</div>';
                 return;
             }
+            
             data.forEach(item => {
                 const div = document.createElement('div');
-                div.className = 'exam-card';
-                div.onclick = () => openPdf(item.url);
+                div.className = 'exam-card gpu-accelerate';
+                div.dataset.url = item.url;
+                
+                let categoryHtml = '';
+                if(item.category) {
+                    categoryHtml = `<span class="card-category">${escapeHtml(item.category)}</span>`;
+                }
+                
                 div.innerHTML = `
-                    <div class="card-date">${item.date_text}</div>
-                    <div class="card-title">${item.title}</div>
+                    <div class="card-header">
+                        <div>
+                            <div class="card-date">${escapeHtml(item.date_text || '')}</div>
+                            <div class="card-title">${escapeHtml(item.title || '')}</div>
+                        </div>
+                        ${categoryHtml}
+                    </div>
+                    <button class="intel-btn" onclick="event.stopPropagation(); analyzeCard('${escapeHtml(item.url)}', this)">INTEL</button>
                 `;
-                resultsList.appendChild(div);
+                fragment.appendChild(div);
+            });
+            
+            resultsList.innerHTML = '';
+            resultsList.appendChild(fragment);
+            
+            // Attach click handlers using event delegation
+            attachCardListeners();
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function attachCardListeners() {
+            resultsList.querySelectorAll('.exam-card').forEach(card => {
+                card.onclick = (e) => {
+                    if(e.target.classList.contains('intel-btn')) return;
+                    openPdf(card.dataset.url);
+                };
             });
         }
 
+        // Attach initial listeners
+        scheduleTask(attachCardListeners);
+
         async function triggerSync() {
-            const btn = document.querySelector('button[onclick="triggerSync()"]');
+            const btn = document.getElementById('sync-btn');
             btn.innerText = "[ FETCHING LIVE DATA... ]";
-            await fetch('/api/sync', { method: 'POST' });
-            btn.innerText = "[ SYNC COMPLETE ]";
-            setTimeout(() => btn.innerText = "[ SYNC SERVER ]", 2000);
-            fetchResults(''); // Refresh display
+            btn.disabled = true;
+            try {
+                const res = await fetch('/api/sync', { method: 'POST' });
+                const data = await res.json();
+                btn.innerText = `[ SYNC COMPLETE: ${data.count || 0} ITEMS ]`;
+                setTimeout(() => {
+                    btn.innerText = "[ SYNC SERVER ]";
+                    btn.disabled = false;
+                }, 2000);
+                fetchResults('');
+            } catch(e) {
+                btn.innerText = "[ SYNC FAILED ]";
+                setTimeout(() => {
+                    btn.innerText = "[ SYNC SERVER ]";
+                    btn.disabled = false;
+                }, 2000);
+            }
         }
 
         // --- 2. PDF VIEWER ---
         function openPdf(url) {
+            currentPdfUrl = url;
             document.getElementById('pdf-frame').src = url;
             document.getElementById('pdf-modal').style.display = 'flex';
+            document.body.style.overflow = 'hidden';
         }
+        
         function closePdf() {
             document.getElementById('pdf-modal').style.display = 'none';
             document.getElementById('pdf-frame').src = '';
+            document.body.style.overflow = '';
+            currentPdfUrl = '';
         }
 
-        // --- 3. PARTICLES ---
+        // --- 3. AI SUMMARY / INTEL FEATURE ---
+        async function analyzeCard(url, btn) {
+            if(btn.classList.contains('loading')) return;
+            
+            btn.classList.add('loading');
+            btn.innerText = 'ANALYZING';
+            
+            try {
+                const res = await fetch('/api/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+                
+                const data = await res.json();
+                
+                if(data.error) {
+                    alert('Analysis failed: ' + data.error);
+                    return;
+                }
+                
+                displaySummary(data);
+            } catch(e) {
+                console.error('Analysis error:', e);
+                alert('Failed to analyze document');
+            } finally {
+                btn.classList.remove('loading');
+                btn.innerText = 'INTEL';
+            }
+        }
+
+        async function showPdfSummary() {
+            if(!currentPdfUrl) return;
+            
+            const btn = document.getElementById('modal-summary-btn');
+            btn.classList.add('loading');
+            btn.innerText = '[ ANALYZING... ]';
+            
+            try {
+                const res = await fetch('/api/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: currentPdfUrl })
+                });
+                
+                const data = await res.json();
+                
+                if(data.error) {
+                    alert('Analysis failed: ' + data.error);
+                    return;
+                }
+                
+                displaySummary(data);
+            } catch(e) {
+                console.error('Analysis error:', e);
+                alert('Failed to analyze document');
+            } finally {
+                btn.classList.remove('loading');
+                btn.innerText = '[ AI SUMMARY ]';
+            }
+        }
+
+        function displaySummary(data) {
+            const panel = document.getElementById('summary-panel');
+            const content = document.getElementById('summary-content');
+            
+            let html = '';
+            
+            if(data.category) {
+                html += `<div class="info-row"><span class="info-label">Document Type</span>${escapeHtml(data.category)}</div>`;
+            }
+            
+            if(data.language_detected && data.language_detected !== 'en') {
+                html += `<div class="info-row"><span class="info-label">Original Language</span>${data.language_detected.toUpperCase()} (Translated)</div>`;
+            }
+            
+            if(data.key_info) {
+                if(data.key_info.paper_codes && data.key_info.paper_codes.length > 0) {
+                    html += `<div class="info-row"><span class="info-label">Paper Codes</span>${escapeHtml(data.key_info.paper_codes.join(', '))}</div>`;
+                }
+                if(data.key_info.dates && data.key_info.dates.length > 0) {
+                    html += `<div class="info-row"><span class="info-label">Important Dates</span>${escapeHtml(data.key_info.dates.join(', '))}</div>`;
+                }
+                if(data.key_info.times && data.key_info.times.length > 0) {
+                    html += `<div class="info-row"><span class="info-label">Times</span>${escapeHtml(data.key_info.times.join(', '))}</div>`;
+                }
+                if(data.key_info.subjects && data.key_info.subjects.length > 0) {
+                    html += `<div class="info-row"><span class="info-label">Subjects</span>${escapeHtml(data.key_info.subjects.join(', '))}</div>`;
+                }
+            }
+            
+            if(data.summary) {
+                html += `<div class="info-row"><span class="info-label">Summary</span>${escapeHtml(data.summary)}</div>`;
+            }
+            
+            if(data.cached) {
+                html += `<div style="margin-top: 15px; font-size: 0.8rem; color: var(--text-graffiti);">📦 Cached analysis</div>`;
+            }
+            
+            content.innerHTML = html || '<div>No analysis data available</div>';
+            panel.style.display = 'block';
+        }
+
+        function closeSummary() {
+            document.getElementById('summary-panel').style.display = 'none';
+        }
+
+        // Close summary on outside click
+        document.addEventListener('click', (e) => {
+            const panel = document.getElementById('summary-panel');
+            if(panel.style.display === 'block' && !panel.contains(e.target) && !e.target.classList.contains('intel-btn') && !e.target.classList.contains('summary-btn')) {
+                closeSummary();
+            }
+        });
+
+        // --- 4. OPTIMIZED PARTICLES (60 FPS) ---
         const canvas = document.getElementById('particle-canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = window.innerWidth; canvas.height = window.innerHeight;
-        const particles = [];
+        const ctx = canvas.getContext('2d', { alpha: true });
+        let particles = [];
+        let animationId;
+        let lastTime = 0;
+        const TARGET_FPS = 60;
+        const FRAME_DURATION = 1000 / TARGET_FPS;
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        
+        resizeCanvas();
+        window.addEventListener('resize', () => {
+            scheduleTask(resizeCanvas);
+        });
+
         class Particle {
             constructor() {
+                this.reset();
+            }
+            reset() {
                 this.x = Math.random() * canvas.width;
                 this.y = Math.random() * canvas.height;
                 this.size = Math.random() * 2;
@@ -226,35 +725,94 @@
                 this.alpha = Math.random() * 0.5;
             }
             update() {
-                this.x += this.speedX; this.y += this.speedY;
-                if(this.alpha > 0) this.alpha -= 0.002; else this.alpha = 0.5;
-                if(this.x > canvas.width) this.x = 0; if(this.y > canvas.height) this.y = 0;
-            }
-            draw() {
-                ctx.fillStyle = `rgba(197, 179, 88, ${this.alpha})`;
-                ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI*2); ctx.fill();
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.alpha -= 0.002;
+                if(this.alpha <= 0) this.alpha = 0.5;
+                if(this.x > canvas.width) this.x = 0;
+                if(this.x < 0) this.x = canvas.width;
+                if(this.y > canvas.height) this.y = 0;
+                if(this.y < 0) this.y = canvas.height;
             }
         }
-        for(let i=0; i<100; i++) particles.push(new Particle());
-        function animate() {
-            ctx.clearRect(0,0,canvas.width,canvas.height);
-            particles.forEach(p => { p.update(); p.draw(); });
-            requestAnimationFrame(animate);
-        }
-        animate();
 
-        // --- 4. HIDDEN REGISTRY (C+O+2) ---
+        // Reduce particle count on mobile for better performance
+        const isMobile = window.innerWidth < 768;
+        const particleCount = isMobile ? 50 : 100;
+        
+        for(let i = 0; i < particleCount; i++) {
+            particles.push(new Particle());
+        }
+
+        function animate(currentTime) {
+            animationId = requestAnimationFrame(animate);
+            
+            // Frame rate limiting for consistent 60fps
+            const elapsed = currentTime - lastTime;
+            if(elapsed < FRAME_DURATION) return;
+            lastTime = currentTime - (elapsed % FRAME_DURATION);
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Batch draw calls
+            ctx.beginPath();
+            particles.forEach(p => {
+                p.update();
+                ctx.moveTo(p.x + p.size, p.y);
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            });
+            ctx.fillStyle = 'rgba(197, 179, 88, 0.3)';
+            ctx.fill();
+        }
+
+        // Start animation
+        animate(0);
+
+        // Pause animation when tab is not visible
+        document.addEventListener('visibilitychange', () => {
+            if(document.hidden) {
+                cancelAnimationFrame(animationId);
+            } else {
+                lastTime = performance.now();
+                animate(lastTime);
+            }
+        });
+
+        // --- 5. HIDDEN REGISTRY (C+O+2) ---
         const keys = {};
         window.addEventListener('keydown', e => {
             keys[e.key.toLowerCase()] = true;
             if(keys['c'] && keys['o'] && keys['2']) {
                 setTimeout(() => {
-                     if(keys['c'] && keys['o'] && keys['2'])
+                    if(keys['c'] && keys['o'] && keys['2'])
                         document.getElementById('feature-registry').style.display = 'block';
                 }, 2000);
             }
         });
         window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+        // --- 6. KEYBOARD SHORTCUTS ---
+        document.addEventListener('keydown', (e) => {
+            // ESC to close modals
+            if(e.key === 'Escape') {
+                closePdf();
+                closeSummary();
+            }
+            // Ctrl+K or / to focus search
+            if((e.ctrlKey && e.key === 'k') || (e.key === '/' && document.activeElement !== searchInput)) {
+                e.preventDefault();
+                searchInput.focus();
+            }
+        });
+
+        // --- 7. SERVICE WORKER REGISTRATION (for PWA) ---
+        if('serviceWorker' in navigator) {
+            scheduleTask(() => {
+                navigator.serviceWorker.register('/sw.js').catch(() => {
+                    // Service worker not available, that's okay
+                });
+            });
+        }
     </script>
 </body>
 </html>

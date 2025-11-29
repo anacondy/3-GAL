@@ -1,0 +1,112 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-python:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.10']
+        include:
+          - os: ubuntu-latest
+            artifact_name: 3gal-linux
+            asset_ext: ''
+          - os: macos-latest
+            artifact_name: 3gal-macos
+            asset_ext: ''
+          - os: windows-latest
+            artifact_name: 3gal-windows
+            asset_ext: '.exe'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build executable
+        run: |
+          pyinstaller --onefile --add-data "templates:templates" --name ${{ matrix.artifact_name }} app.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: dist/${{ matrix.artifact_name }}${{ matrix.asset_ext }}
+
+  release:
+    needs: build-python
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/3gal-linux/3gal-linux
+            artifacts/3gal-macos/3gal-macos
+            artifacts/3gal-windows/3gal-windows.exe
+          body: |
+            ## 3-GAL Release
+            
+            ### Downloads
+            
+            | Platform | Download |
+            |----------|----------|
+            | Windows | `3gal-windows.exe` |
+            | macOS | `3gal-macos` |
+            | Linux | `3gal-linux` |
+            
+            ### Installation
+            
+            #### Windows
+            1. Download `3gal-windows.exe`
+            2. Double-click to run
+            3. Open browser to `http://localhost:5007`
+            
+            #### macOS
+            1. Download `3gal-macos`
+            2. Open Terminal and run: `chmod +x 3gal-macos && ./3gal-macos`
+            3. Open browser to `http://localhost:5007`
+            
+            #### Linux
+            1. Download `3gal-linux`
+            2. Open Terminal and run: `chmod +x 3gal-linux && ./3gal-linux`
+            3. Open browser to `http://localhost:5007`
+            
+            ### Requirements
+            - No additional dependencies required
+            - The executable is self-contained
+            
+            ### Source Installation
+            For development, use:
+            ```bash
+            git clone https://github.com/anacondy/3-GAL.git
+            cd 3-GAL
+            pip install -r requirements.txt
+            python app.py
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
