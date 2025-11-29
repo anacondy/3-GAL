@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DESTINY // EXAMS</title>
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Special+Elite&display=swap" rel="stylesheet">
+
+    <style>
+        /* --- SUPERNATURAL // GRUNGE AESTHETIC --- */
+        :root {
+            --bg-color: #0f0f0f;
+            --glass-panel: rgba(30, 28, 20, 0.7);
+            --text-primary: #dcdcdc;
+            --text-accent: #c5b358; /* Faded Gold */
+            --text-graffiti: #8c8c73;
+            --border-color: #3e3b32;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            font-family: 'Special Elite', monospace;
+            overflow-x: hidden;
+            height: 100vh;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        /* Particles */
+        #particle-canvas {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: -1;
+            background: radial-gradient(circle at center, rgba(40,35,30,0.2) 0%, rgba(0,0,0,0.95) 100%);
+        }
+        .container {
+            width: 90%; max-width: 1000px; margin-top: 5vh; height: 90vh;
+            display: flex; flex-direction: column; gap: 20px; z-index: 10;
+        }
+        header { text-align: center; position: relative; margin-bottom: 20px; }
+        h1 {
+            font-family: 'Oswald', sans-serif; font-size: 4rem;
+            color: var(--text-primary); text-transform: uppercase;
+            letter-spacing: 5px;
+            text-shadow: 0 0 20px rgba(197, 179, 88, 0.3);
+        }
+        .graffiti-tag {
+            position: absolute; top: -10px; right: 10%;
+            font-family: 'Special Elite', cursive;
+            color: var(--text-graffiti); font-size: 1.2rem;
+            transform: rotate(15deg); opacity: 0.8;
+        }
+        /* Search */
+        .search-wrapper { position: relative; width: 100%; }
+        #search-input {
+            width: 100%; background: rgba(0, 0, 0, 0.5);
+            border: 2px solid var(--text-accent); color: var(--text-accent);
+            padding: 15px 20px; font-family: 'Special Elite', monospace;
+            font-size: 1.2rem; outline: none; text-transform: uppercase;
+        }
+        /* Results */
+        .results-container {
+            flex-grow: 1; overflow-y: auto;
+            border-top: 1px solid var(--border-color); padding-right: 10px;
+        }
+        .results-container::-webkit-scrollbar { width: 6px; }
+        .results-container::-webkit-scrollbar-thumb { background: var(--text-graffiti); }
+        .exam-card {
+            background: var(--glass-panel); backdrop-filter: blur(5px);
+            border-left: 4px solid var(--border-color);
+            margin-bottom: 15px; padding: 20px;
+            cursor: pointer; transition: 0.3s;
+        }
+        .exam-card:hover {
+            border-left-color: var(--text-accent);
+            background: rgba(50, 45, 30, 0.8); transform: translateX(5px);
+        }
+        .card-date { font-size: 0.9rem; color: var(--text-graffiti); margin-bottom: 5px; font-weight: bold; }
+        .card-title { font-size: 1.2rem; color: var(--text-primary); }
+
+        /* PDF Modal */
+        #pdf-modal {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95); z-index: 100;
+            justify-content: center; align-items: center; flex-direction: column;
+        }
+        #pdf-frame { width: 85%; height: 85%; border: 1px solid var(--text-accent); background: #fff; }
+        .close-btn {
+            margin-bottom: 15px; background: transparent; color: var(--text-primary);
+            border: 1px solid var(--text-accent); padding: 5px 20px; cursor: pointer;
+            font-family: 'Oswald'; font-size: 1.2rem;
+        }
+        /* Hidden Registry */
+        #feature-registry {
+            display: none; position: fixed; bottom: 20px; left: 20px;
+            width: 300px; background: #000; border: 1px solid var(--text-accent);
+            color: var(--text-accent); padding: 15px; z-index: 200;
+            font-size: 0.8rem; box-shadow: 0 0 15px rgba(197, 179, 88, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="particle-canvas"></canvas>
+
+    <div id="pdf-modal">
+        <button class="close-btn" onclick="closePdf()">[ CLOSE FILE ]</button>
+        <iframe id="pdf-frame"></iframe>
+    </div>
+
+    <div id="feature-registry">
+        <h3>SYSTEM REGISTRY_ v1.3</h3>
+        <ul>
+            <li><span>Status:</span> Live Scraper Active</li>
+            <li><span>Theme:</span> Supernatural / Grunge</li>
+            <li><span>Admin:</span> Secure Upload Enabled</li>
+        </ul>
+    </div>
+
+    <div class="container">
+        <header>
+            <span class="graffiti-tag">angel_wings_v1</span>
+            <h1>Examination</h1>
+            <button onclick="triggerSync()" style="background:none; border:none; color:#555; cursor:pointer; font-family:'Special Elite';">[ SYNC SERVER ]</button>
+        </header>
+
+        <div class="search-wrapper">
+            <input type="text" id="search-input" placeholder="SEARCH DATABASE..." autocomplete="off">
+        </div>
+
+        <div class="results-container" id="results-list">
+            {% for item in initial_data %}
+            <div class="exam-card" onclick="openPdf('{{ item.url }}')">
+                <div class="card-date">{{ item.date_text }}</div>
+                <div class="card-title">{{ item.title }}</div>
+            </div>
+            {% endfor %}
+
+            {% if initial_data|length == 0 %}
+            <div style="text-align:center; color: #666; margin-top: 20px;">[ NO RECORDS FOUND - TRY SYNCING ]</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        // --- 1. SEARCH & ADMIN CHECK ---
+        const searchInput = document.getElementById('search-input');
+        const resultsList = document.getElementById('results-list');
+        let timeout = null;
+
+        searchInput.addEventListener('input', (e) => {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => {
+                const q = e.target.value;
+
+                // ADMIN LOGIN TRIGGER
+                if(q.toLowerCase() === 'upload') {
+                    const creds = prompt("ENTER ADMIN IDENTITY:");
+                    if(creds === "Alvido") {
+                        alert("ACCESS GRANTED. OPENING UPLOAD PANEL...");
+                        // In real implementation: window.location.href = '/admin/upload';
+                    } else {
+                        alert("ACCESS DENIED.");
+                    }
+                    return;
+                }
+
+                fetchResults(q);
+            }, 300);
+        });
+
+        async function fetchResults(query) {
+            try {
+                const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+                const data = await res.json();
+                renderCards(data);
+            } catch(e) { console.error("Search Error", e); }
+        }
+
+        function renderCards(data) {
+            resultsList.innerHTML = '';
+            if(data.length === 0) {
+                resultsList.innerHTML = '<div style="text-align:center; color: #666;">[ NO DATA MATCHED ]</div>';
+                return;
+            }
+            data.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'exam-card';
+                div.onclick = () => openPdf(item.url);
+                div.innerHTML = `
+                    <div class="card-date">${item.date_text}</div>
+                    <div class="card-title">${item.title}</div>
+                `;
+                resultsList.appendChild(div);
+            });
+        }
+
+        async function triggerSync() {
+            const btn = document.querySelector('button[onclick="triggerSync()"]');
+            btn.innerText = "[ FETCHING LIVE DATA... ]";
+            await fetch('/api/sync', { method: 'POST' });
+            btn.innerText = "[ SYNC COMPLETE ]";
+            setTimeout(() => btn.innerText = "[ SYNC SERVER ]", 2000);
+            fetchResults(''); // Refresh display
+        }
+
+        // --- 2. PDF VIEWER ---
+        function openPdf(url) {
+            document.getElementById('pdf-frame').src = url;
+            document.getElementById('pdf-modal').style.display = 'flex';
+        }
+        function closePdf() {
+            document.getElementById('pdf-modal').style.display = 'none';
+            document.getElementById('pdf-frame').src = '';
+        }
+
+        // --- 3. PARTICLES ---
+        const canvas = document.getElementById('particle-canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+        const particles = [];
+        class Particle {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.size = Math.random() * 2;
+                this.speedX = (Math.random() - 0.5) * 0.5;
+                this.speedY = (Math.random() - 0.5) * 0.5;
+                this.alpha = Math.random() * 0.5;
+            }
+            update() {
+                this.x += this.speedX; this.y += this.speedY;
+                if(this.alpha > 0) this.alpha -= 0.002; else this.alpha = 0.5;
+                if(this.x > canvas.width) this.x = 0; if(this.y > canvas.height) this.y = 0;
+            }
+            draw() {
+                ctx.fillStyle = `rgba(197, 179, 88, ${this.alpha})`;
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI*2); ctx.fill();
+            }
+        }
+        for(let i=0; i<100; i++) particles.push(new Particle());
+        function animate() {
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            particles.forEach(p => { p.update(); p.draw(); });
+            requestAnimationFrame(animate);
+        }
+        animate();
+
+        // --- 4. HIDDEN REGISTRY (C+O+2) ---
+        const keys = {};
+        window.addEventListener('keydown', e => {
+            keys[e.key.toLowerCase()] = true;
+            if(keys['c'] && keys['o'] && keys['2']) {
+                setTimeout(() => {
+                     if(keys['c'] && keys['o'] && keys['2'])
+                        document.getElementById('feature-registry').style.display = 'block';
+                }, 2000);
+            }
+        });
+        window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+    </script>
+</body>
+</html>
