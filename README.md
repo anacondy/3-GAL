@@ -6,6 +6,10 @@ A dynamic, real-time web scraper for Galgotias University examination announceme
 ![Flask](https://img.shields.io/badge/flask-2.3+-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
+## 🌐 Live Demo
+
+**[View Live Site](https://anacondy.github.io/3-GAL/)** - Automatically updated daily with fresh announcements.
+
 ## ✨ Features
 
 - **🔄 Real-time Scraping**: Live data synchronization from Galgotias University announcements
@@ -15,6 +19,7 @@ A dynamic, real-time web scraper for Galgotias University examination announceme
 - **📱 Responsive Design**: Optimized for all devices - mobile (16:9, 20:9), tablet, desktop, and ultra-wide screens
 - **⚡ 60 FPS Performance**: Smooth particle animations with GPU acceleration
 - **🎨 Supernatural/Grunge UI**: Unique dark aesthetic with particle effects
+- **🚀 GitHub Pages Deployment**: Automatic daily updates via GitHub Actions
 
 ## 📋 Requirements
 

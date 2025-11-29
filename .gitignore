@@ -70,3 +70,6 @@ target/
 tmp/
 temp/
 *.tmp
+
+# Generated static site
+static_site/
