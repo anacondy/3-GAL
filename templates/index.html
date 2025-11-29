@@ -372,7 +372,7 @@
     </style>
 </head>
 <body>
-    <canvas id="particle-canvas" class="gpu-accelerate"></canvas>
+    <canvas id="particle-canvas"></canvas>
 
     <div id="pdf-modal">
         <div class="modal-controls">
@@ -736,8 +736,10 @@
             }
         }
 
-        // Reduce particle count on mobile for better performance
-        const isMobile = window.innerWidth < 768;
+        // Improved mobile detection for better performance optimization
+        const isMobile = window.innerWidth < 768 || 
+                        ('ontouchstart' in window) || 
+                        (navigator.maxTouchPoints > 0);
         const particleCount = isMobile ? 50 : 100;
         
         for(let i = 0; i < particleCount; i++) {

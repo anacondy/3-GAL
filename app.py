@@ -51,6 +51,10 @@ PDF_DOWNLOAD_TIMEOUT = 30
 # Thread pool for async operations
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
+# Cleanup executor on exit
+import atexit
+atexit.register(executor.shutdown, wait=False)
+
 
 # --- Database Setup ---
 def init_db():
@@ -234,18 +238,57 @@ def extract_text_parts(query):
 
 
 # --- PDF Analysis Functions ---
+
+# Allowed domains for PDF downloads (SSRF protection)
+ALLOWED_PDF_DOMAINS = [
+    'galgotiasuniversity.edu.in',
+    'www.galgotiasuniversity.edu.in',
+]
+
+def is_allowed_url(url):
+    """Validate URL is from allowed domains to prevent SSRF."""
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        # Only allow HTTPS
+        if parsed.scheme not in ('http', 'https'):
+            return False
+        # Check domain is in allowlist
+        host = parsed.netloc.lower()
+        return any(host == domain or host.endswith('.' + domain) 
+                  for domain in ALLOWED_PDF_DOMAINS)
+    except Exception:
+        return False
+
+
 def download_pdf(url):
     """Download PDF from URL and return as bytes."""
+    # Validate URL to prevent SSRF attacks
+    if not is_allowed_url(url):
+        print(f"PDF download blocked: URL not in allowlist - {url[:50]}")
+        return None
+    
     try:
         response = requests.get(url, headers=HEADERS, timeout=PDF_DOWNLOAD_TIMEOUT, stream=True)
         response.raise_for_status()
         
-        # Check if it's a PDF
-        content_type = response.headers.get('content-type', '')
-        if 'pdf' not in content_type.lower() and not url.lower().endswith('.pdf'):
+        content = response.content
+        
+        # More lenient PDF validation:
+        # 1. Check content-type header
+        # 2. Check URL extension
+        # 3. Check PDF magic bytes (%PDF)
+        content_type = response.headers.get('content-type', '').lower()
+        is_pdf = (
+            'pdf' in content_type or
+            url.lower().endswith('.pdf') or
+            content[:5] == b'%PDF-'
+        )
+        
+        if not is_pdf:
             return None
         
-        return io.BytesIO(response.content)
+        return io.BytesIO(content)
     except Exception as e:
         print(f"PDF download error: {e}")
         return None
@@ -690,4 +733,7 @@ if __name__ == '__main__':
     init_db()
     # OPTIONAL: Force a fresh scrape every time server restarts
     scrape_and_sync(analyze_pdfs=False)  # Don't analyze on startup for faster load
-    app.run(debug=True, port=5007, threaded=True)
+    # Debug mode should be disabled in production via environment variable
+    debug_mode = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+    port = int(os.environ.get('PORT', 5007))
+    app.run(debug=debug_mode, port=port, threaded=True)
