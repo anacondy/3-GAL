@@ -60,40 +60,67 @@ atexit.register(executor.shutdown, wait=False)
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS announcements (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date_text TEXT,
-            title TEXT,
-            url TEXT UNIQUE,
-            crawled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            pdf_summary TEXT,
-            category TEXT,
-            translated_title TEXT
-        )
-    ''')
+    
+    # Check if announcements table exists
+    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='announcements'")
+    table_exists = c.fetchone() is not None
+    
+    if table_exists:
+        # Check for new columns and add them if missing
+        c.execute("PRAGMA table_info(announcements)")
+        columns = [col[1] for col in c.fetchall()]
+        
+        if 'pdf_summary' not in columns:
+            c.execute('ALTER TABLE announcements ADD COLUMN pdf_summary TEXT')
+        if 'category' not in columns:
+            c.execute('ALTER TABLE announcements ADD COLUMN category TEXT')
+        if 'translated_title' not in columns:
+            c.execute('ALTER TABLE announcements ADD COLUMN translated_title TEXT')
+    else:
+        # Create fresh table
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS announcements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date_text TEXT,
+                title TEXT,
+                url TEXT UNIQUE,
+                crawled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                pdf_summary TEXT,
+                category TEXT,
+                translated_title TEXT
+            )
+        ''')
+    
     # Create FTS (Full-Text Search) table for comprehensive search
-    c.execute('''
-        CREATE VIRTUAL TABLE IF NOT EXISTS announcements_fts USING fts5(
-            title, date_text, pdf_summary, translated_title, category,
-            content='announcements', content_rowid='id'
-        )
-    ''')
+    try:
+        c.execute('''
+            CREATE VIRTUAL TABLE IF NOT EXISTS announcements_fts USING fts5(
+                title, date_text, pdf_summary, translated_title, category,
+                content='announcements', content_rowid='id'
+            )
+        ''')
+    except Exception as e:
+        print(f"FTS table creation skipped (may already exist): {e}")
+    
     # Create triggers to keep FTS in sync
-    c.execute('''
-        CREATE TRIGGER IF NOT EXISTS announcements_ai AFTER INSERT ON announcements BEGIN
-            INSERT INTO announcements_fts(rowid, title, date_text, pdf_summary, translated_title, category)
-            VALUES (new.id, new.title, new.date_text, new.pdf_summary, new.translated_title, new.category);
-        END
-    ''')
-    c.execute('''
-        CREATE TRIGGER IF NOT EXISTS announcements_au AFTER UPDATE ON announcements BEGIN
-            INSERT INTO announcements_fts(announcements_fts, rowid, title, date_text, pdf_summary, translated_title, category)
-            VALUES ('delete', old.id, old.title, old.date_text, old.pdf_summary, old.translated_title, old.category);
-            INSERT INTO announcements_fts(rowid, title, date_text, pdf_summary, translated_title, category)
-            VALUES (new.id, new.title, new.date_text, new.pdf_summary, new.translated_title, new.category);
-        END
-    ''')
+    try:
+        c.execute('''
+            CREATE TRIGGER IF NOT EXISTS announcements_ai AFTER INSERT ON announcements BEGIN
+                INSERT INTO announcements_fts(rowid, title, date_text, pdf_summary, translated_title, category)
+                VALUES (new.id, new.title, new.date_text, new.pdf_summary, new.translated_title, new.category);
+            END
+        ''')
+        c.execute('''
+            CREATE TRIGGER IF NOT EXISTS announcements_au AFTER UPDATE ON announcements BEGIN
+                INSERT INTO announcements_fts(announcements_fts, rowid, title, date_text, pdf_summary, translated_title, category)
+                VALUES ('delete', old.id, old.title, old.date_text, old.pdf_summary, old.translated_title, old.category);
+                INSERT INTO announcements_fts(rowid, title, date_text, pdf_summary, translated_title, category)
+                VALUES (new.id, new.title, new.date_text, new.pdf_summary, new.translated_title, new.category);
+            END
+        ''')
+    except Exception as e:
+        print(f"Trigger creation skipped (may already exist): {e}")
+    
     conn.commit()
     conn.close()
 
@@ -161,30 +188,59 @@ def comprehensive_search(query):
         rows = c.fetchall()
         results = [dict(row) for row in rows]
     except Exception as e:
-        print(f"FTS search failed: {e}")
+        print(f"FTS search failed (falling back to LIKE): {e}")
     
     # Strategy 2: Fall back to LIKE-based search
     if not results:
-        # Parse query for date patterns
-        date_patterns = extract_date_patterns(query)
-        text_parts = extract_text_parts(query)
-        
-        # Build flexible LIKE query
-        conditions = []
-        params = []
-        
-        for text in text_parts:
-            search_term = f"%{text}%"
-            conditions.append("(title LIKE ? OR date_text LIKE ? OR pdf_summary LIKE ? OR translated_title LIKE ?)")
-            params.extend([search_term, search_term, search_term, search_term])
-        
-        for date in date_patterns:
-            conditions.append("date_text LIKE ?")
-            params.append(f"%{date}%")
-        
-        if conditions:
-            query_sql = f"SELECT * FROM announcements WHERE {' AND '.join(conditions)} ORDER BY id DESC LIMIT 100"
-            c.execute(query_sql, params)
+        try:
+            # Parse query for date patterns
+            date_patterns = extract_date_patterns(query)
+            text_parts = extract_text_parts(query)
+            
+            # Build flexible LIKE query with only columns that exist
+            conditions = []
+            params = []
+            
+            # Get column info to check what exists
+            c.execute("PRAGMA table_info(announcements)")
+            columns = [col[1] for col in c.fetchall()]
+            
+            for text in text_parts:
+                search_term = f"%{text}%"
+                col_conditions = ["title LIKE ?", "date_text LIKE ?"]
+                col_params = [search_term, search_term]
+                
+                if 'pdf_summary' in columns:
+                    col_conditions.append("pdf_summary LIKE ?")
+                    col_params.append(search_term)
+                if 'translated_title' in columns:
+                    col_conditions.append("translated_title LIKE ?")
+                    col_params.append(search_term)
+                
+                conditions.append(f"({' OR '.join(col_conditions)})")
+                params.extend(col_params)
+            
+            for date in date_patterns:
+                conditions.append("date_text LIKE ?")
+                params.append(f"%{date}%")
+            
+            if conditions:
+                query_sql = f"SELECT * FROM announcements WHERE {' AND '.join(conditions)} ORDER BY id DESC LIMIT 100"
+                c.execute(query_sql, params)
+                rows = c.fetchall()
+                results = [dict(row) for row in rows]
+            else:
+                # Simple fallback: just search title and date
+                search_term = f"%{query}%"
+                c.execute("SELECT * FROM announcements WHERE title LIKE ? OR date_text LIKE ? ORDER BY id DESC LIMIT 100",
+                         (search_term, search_term))
+                rows = c.fetchall()
+                results = [dict(row) for row in rows]
+        except Exception as e:
+            print(f"LIKE search failed: {e}")
+            # Ultimate fallback
+            search_term = f"%{query}%"
+            c.execute("SELECT * FROM announcements WHERE title LIKE ? ORDER BY id DESC LIMIT 100", (search_term,))
             rows = c.fetchall()
             results = [dict(row) for row in rows]
     
