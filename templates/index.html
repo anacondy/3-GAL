@@ -191,8 +191,54 @@
             margin-bottom: 15px;
             flex-wrap: wrap;
             justify-content: center;
+            align-items: center;
         }
-        #pdf-frame { width: 85%; height: 80%; border: 1px solid var(--text-accent); background: #fff; }
+        
+        /* PDF Container with scroll for zoom */
+        #pdf-container {
+            width: 85%;
+            height: 80%;
+            overflow: auto;
+            background: #fff;
+            border: 1px solid var(--text-accent);
+            -webkit-overflow-scrolling: touch;
+        }
+        #pdf-frame { 
+            width: 100%; 
+            height: 100%; 
+            border: none; 
+            background: #fff;
+            transform-origin: top left;
+            transition: transform 0.2s ease;
+        }
+        
+        /* Zoom Controls */
+        .zoom-controls {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }
+        .zoom-btn {
+            background: rgba(197, 179, 88, 0.3);
+            color: var(--text-accent);
+            border: 1px solid var(--text-accent);
+            padding: 6px 12px;
+            font-family: 'Oswald', sans-serif;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .zoom-btn:hover {
+            background: var(--text-accent);
+            color: var(--bg-color);
+        }
+        .zoom-level {
+            color: var(--text-accent);
+            font-family: 'Oswald', sans-serif;
+            font-size: 0.9rem;
+            min-width: 50px;
+            text-align: center;
+        }
         .close-btn, .summary-btn {
             background: transparent; color: var(--text-primary);
             border: 1px solid var(--text-accent); padding: 8px 20px; cursor: pointer;
@@ -287,10 +333,12 @@
             .card-title { font-size: 1rem; }
             .card-date { font-size: 0.8rem; }
             .intel-btn { padding: 4px 8px; font-size: 0.7rem; }
-            #pdf-frame { width: 95%; height: 70%; }
+            #pdf-container { width: 95%; height: 70%; }
             .close-btn, .summary-btn { padding: 6px 15px; font-size: 0.9rem; }
             #summary-panel { width: 95%; padding: 15px; }
             #summary-panel h3 { font-size: 1.2rem; }
+            .zoom-btn { padding: 4px 10px; font-size: 0.9rem; }
+            .zoom-level { font-size: 0.8rem; min-width: 40px; }
         }
 
         /* Tablets */
@@ -299,6 +347,7 @@
             .container { width: 92%; }
             #search-input { font-size: 1.1rem; }
             .card-title { font-size: 1.1rem; }
+            #pdf-container { width: 90%; }
         }
 
         /* Large screens / Desktop */
@@ -377,9 +426,17 @@
     <div id="pdf-modal">
         <div class="modal-controls">
             <button class="close-btn" onclick="closePdf()">[ CLOSE FILE ]</button>
+            <div class="zoom-controls">
+                <button class="zoom-btn" onclick="zoomOut()" title="Zoom Out">−</button>
+                <span class="zoom-level" id="zoom-level">100%</span>
+                <button class="zoom-btn" onclick="zoomIn()" title="Zoom In">+</button>
+                <button class="zoom-btn" onclick="resetZoom()" title="Reset Zoom">⟲</button>
+            </div>
             <button class="summary-btn" onclick="showPdfSummary()" id="modal-summary-btn">[ AI SUMMARY ]</button>
         </div>
-        <iframe id="pdf-frame" loading="lazy"></iframe>
+        <div id="pdf-container">
+            <iframe id="pdf-frame" loading="lazy"></iframe>
+        </div>
     </div>
 
     <div id="summary-panel">
@@ -564,11 +621,36 @@
         }
 
         // --- 2. PDF VIEWER ---
+        let currentZoom = 1;
+        const ZOOM_STEP = 0.25;
+        const MIN_ZOOM = 0.5;
+        const MAX_ZOOM = 3;
+
+        // Detect if device is mobile/tablet (for opening PDFs directly)
+        function isMobileDevice() {
+            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) 
+                   || (window.innerWidth <= 768 && 'ontouchstart' in window);
+        }
+
         function openPdf(url) {
             currentPdfUrl = url;
-            document.getElementById('pdf-frame').src = url;
+            
+            // On mobile devices, open PDF directly in new tab for better experience
+            if (isMobileDevice()) {
+                window.open(url, '_blank');
+                return;
+            }
+            
+            // On desktop, use the modal with zoom support
+            const pdfFrame = document.getElementById('pdf-frame');
+            const pdfContainer = document.getElementById('pdf-container');
+            
+            // Set the PDF URL
+            pdfFrame.src = url;
+            
             document.getElementById('pdf-modal').style.display = 'flex';
             document.body.style.overflow = 'hidden';
+            resetZoom();
         }
         
         function closePdf() {
@@ -576,6 +658,40 @@
             document.getElementById('pdf-frame').src = '';
             document.body.style.overflow = '';
             currentPdfUrl = '';
+            resetZoom();
+        }
+
+        function updateZoomLevel() {
+            document.getElementById('zoom-level').textContent = Math.round(currentZoom * 100) + '%';
+            const pdfFrame = document.getElementById('pdf-frame');
+            const pdfContainer = document.getElementById('pdf-container');
+            
+            // Apply scale transform to the iframe
+            pdfFrame.style.transform = `scale(${currentZoom})`;
+            
+            // Resize iframe to compensate for scaling so scrolling works correctly
+            // When we scale up, we need to increase the size so the scaled content fits
+            pdfFrame.style.width = (100 / currentZoom) + '%';
+            pdfFrame.style.height = (100 / currentZoom) + '%';
+        }
+
+        function zoomIn() {
+            if (currentZoom < MAX_ZOOM) {
+                currentZoom = Math.min(currentZoom + ZOOM_STEP, MAX_ZOOM);
+                updateZoomLevel();
+            }
+        }
+
+        function zoomOut() {
+            if (currentZoom > MIN_ZOOM) {
+                currentZoom = Math.max(currentZoom - ZOOM_STEP, MIN_ZOOM);
+                updateZoomLevel();
+            }
+        }
+
+        function resetZoom() {
+            currentZoom = 1;
+            updateZoomLevel();
         }
 
         // --- 3. AI SUMMARY / INTEL FEATURE ---
