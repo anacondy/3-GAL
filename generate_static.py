@@ -146,7 +146,7 @@ def generate_static_html(announcements):
 
 
 def generate_full_static_html(announcements):
-    """Generate a complete static HTML page."""
+    """Generate a complete static HTML page with all features from PR #2."""
     
     # Generate announcement cards
     cards_html = ""
@@ -155,8 +155,6 @@ def generate_full_static_html(announcements):
             category_html = f'<span class="card-category">{item.get("category", "")}</span>' if item.get("category") else ''
             # Escape special characters in title and URL for HTML and JavaScript
             title = item['title'].replace('&', '&amp;').replace('"', '&quot;').replace('<', '&lt;').replace('>', '&gt;')
-            # Escape URL for JavaScript string (escape single quotes and backslashes)
-            url = item['url'].replace('\\', '\\\\').replace("'", "\\'").replace('"', '&quot;')
             date_text = item['date_text']
             
             cards_html += f'''
@@ -280,14 +278,85 @@ def generate_full_static_html(announcements):
             border-radius: 3px;
             white-space: nowrap;
         }}
+        
+        /* PDF Modal with zoom controls */
         #pdf-modal {{
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.95); z-index: 100;
             justify-content: center; align-items: center; flex-direction: column;
         }}
-        #pdf-frame {{ width: 85%; height: 80%; border: 1px solid var(--text-accent); background: #fff; }}
+        .modal-controls {{
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+        }}
+        
+        /* PDF Container with scroll for zoom */
+        #pdf-container {{
+            width: 85%;
+            height: 80%;
+            overflow: auto;
+            background: #fff;
+            border: 1px solid var(--text-accent);
+            -webkit-overflow-scrolling: touch;
+        }}
+        /* Custom scrollbar for PDF container - matches site theme */
+        #pdf-container::-webkit-scrollbar {{ width: 8px; height: 8px; }}
+        #pdf-container::-webkit-scrollbar-thumb {{ 
+            background: var(--text-accent); 
+            border-radius: 4px;
+        }}
+        #pdf-container::-webkit-scrollbar-thumb:hover {{ 
+            background: #d4c46a; 
+        }}
+        #pdf-container::-webkit-scrollbar-track {{ 
+            background: rgba(30, 28, 20, 0.8); 
+            border-radius: 4px;
+        }}
+        #pdf-container::-webkit-scrollbar-corner {{
+            background: rgba(30, 28, 20, 0.8);
+        }}
+        #pdf-frame {{ 
+            width: 100%; 
+            height: 100%; 
+            border: none; 
+            background: #fff;
+            transform-origin: top left;
+            transition: transform 0.2s ease;
+        }}
+        
+        /* Zoom Controls */
+        .zoom-controls {{
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }}
+        .zoom-btn {{
+            background: rgba(197, 179, 88, 0.3);
+            color: var(--text-accent);
+            border: 1px solid var(--text-accent);
+            padding: 6px 12px;
+            font-family: 'Oswald', sans-serif;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }}
+        .zoom-btn:hover {{
+            background: var(--text-accent);
+            color: var(--bg-color);
+        }}
+        .zoom-level {{
+            color: var(--text-accent);
+            font-family: 'Oswald', sans-serif;
+            font-size: 0.9rem;
+            min-width: 50px;
+            text-align: center;
+        }}
         .close-btn {{
-            margin-bottom: 15px; background: transparent; color: var(--text-primary);
+            background: transparent; color: var(--text-primary);
             border: 1px solid var(--text-accent); padding: 8px 20px; cursor: pointer;
             font-family: 'Oswald', sans-serif; font-size: 1.1rem;
             transition: all 0.2s ease;
@@ -305,19 +374,96 @@ def generate_full_static_html(announcements):
             margin-bottom: 10px;
         }}
         
-        /* Responsive */
+        /* Responsive - Mobile devices */
         @media screen and (max-width: 480px) {{
             h1 {{ font-size: 2.2rem; letter-spacing: 2px; }}
-            .container {{ width: 95%; margin-top: 2vh; }}
+            .graffiti-tag {{ font-size: 0.9rem; right: 5%; }}
+            .container {{ width: 95%; margin-top: 2vh; gap: 15px; }}
             #search-input {{ padding: 12px 15px; font-size: 1rem; }}
-            .exam-card {{ padding: 15px; }}
+            .exam-card {{ padding: 15px; margin-bottom: 10px; }}
             .card-title {{ font-size: 1rem; }}
-            #pdf-frame {{ width: 95%; height: 70%; }}
+            .card-date {{ font-size: 0.8rem; }}
+            #pdf-container {{ width: 95%; height: 70%; }}
+            .close-btn {{ padding: 6px 15px; font-size: 0.9rem; }}
+            .zoom-btn {{ padding: 4px 10px; font-size: 0.9rem; }}
+            .zoom-level {{ font-size: 0.8rem; min-width: 40px; }}
         }}
+
+        /* Tablets */
+        @media screen and (min-width: 481px) and (max-width: 768px) {{
+            h1 {{ font-size: 3rem; }}
+            .container {{ width: 92%; }}
+            #search-input {{ font-size: 1.1rem; }}
+            .card-title {{ font-size: 1.1rem; }}
+            #pdf-container {{ width: 90%; }}
+        }}
+
+        /* Large screens / Desktop */
+        @media screen and (min-width: 1200px) {{
+            .container {{ max-width: 1100px; }}
+            h1 {{ font-size: 4.5rem; }}
+            .card-title {{ font-size: 1.3rem; }}
+            .card-date {{ font-size: 1rem; }}
+            #search-input {{ font-size: 1.3rem; padding: 18px 25px; }}
+        }}
+
+        /* Extra large / Wide screens */
         @media screen and (min-width: 1600px) {{
             .container {{ max-width: 1300px; }}
-            h1 {{ font-size: 5rem; }}
+            h1 {{ font-size: 5rem; letter-spacing: 8px; }}
+            .graffiti-tag {{ font-size: 1.5rem; }}
             .card-title {{ font-size: 1.5rem; }}
+            .card-date {{ font-size: 1.1rem; }}
+            #search-input {{ font-size: 1.5rem; padding: 20px 30px; }}
+            .exam-card {{ padding: 25px; margin-bottom: 20px; }}
+            .close-btn {{ font-size: 1.3rem; padding: 10px 25px; }}
+        }}
+
+        /* Ultra-wide screens */
+        @media screen and (min-width: 2000px) {{
+            .container {{ max-width: 1500px; }}
+            h1 {{ font-size: 6rem; }}
+            .card-title {{ font-size: 1.7rem; }}
+            .card-date {{ font-size: 1.2rem; }}
+            #search-input {{ font-size: 1.7rem; }}
+        }}
+
+        /* Tall mobile screens (20:9 like modern phones) */
+        @media screen and (max-width: 480px) and (min-aspect-ratio: 9/19) {{
+            .container {{ margin-top: 3vh; }}
+            .results-container {{ max-height: 70vh; }}
+        }}
+
+        /* Standard mobile (16:9) */
+        @media screen and (max-width: 480px) and (max-aspect-ratio: 9/16) {{
+            .results-container {{ max-height: 65vh; }}
+        }}
+
+        /* Landscape mobile */
+        @media screen and (max-height: 500px) and (orientation: landscape) {{
+            .container {{ margin-top: 2vh; }}
+            h1 {{ font-size: 2rem; }}
+            .results-container {{ max-height: 50vh; }}
+            #pdf-container {{ height: 60%; }}
+        }}
+
+        /* Reduced motion preference */
+        @media (prefers-reduced-motion: reduce) {{
+            *, *::before, *::after {{
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }}
+            #particle-canvas {{ display: none; }}
+        }}
+
+        /* High contrast mode */
+        @media (prefers-contrast: high) {{
+            :root {{
+                --text-primary: #ffffff;
+                --text-accent: #ffd700;
+                --border-color: #666666;
+            }}
         }}
     </style>
 </head>
@@ -325,8 +471,18 @@ def generate_full_static_html(announcements):
     <canvas id="particle-canvas"></canvas>
 
     <div id="pdf-modal">
-        <button class="close-btn" onclick="closePdf()">[ CLOSE FILE ]</button>
-        <iframe id="pdf-frame" loading="lazy"></iframe>
+        <div class="modal-controls">
+            <button class="close-btn" onclick="closePdf()">[ CLOSE FILE ]</button>
+            <div class="zoom-controls">
+                <button class="zoom-btn" onclick="zoomOut()" title="Zoom Out">−</button>
+                <span class="zoom-level" id="zoom-level">100%</span>
+                <button class="zoom-btn" onclick="zoomIn()" title="Zoom In">+</button>
+                <button class="zoom-btn" onclick="resetZoom()" title="Reset Zoom">⟲</button>
+            </div>
+        </div>
+        <div id="pdf-container">
+            <iframe id="pdf-frame" loading="lazy"></iframe>
+        </div>
     </div>
 
     <div class="container">
@@ -362,17 +518,62 @@ def generate_full_static_html(announcements):
             }});
         }});
 
-        // PDF Viewer
+        // Zoom state
+        let currentZoom = 1;
+        const ZOOM_STEP = 0.25;
+        const MIN_ZOOM = 0.5;
+        const MAX_ZOOM = 3;
+
+        // PDF Viewer - Uses Google Docs Viewer for cross-device compatibility
         function openPdf(url) {{
-            document.getElementById('pdf-frame').src = url;
+            const pdfFrame = document.getElementById('pdf-frame');
+            
+            // Use Google Docs PDF Viewer for reliable cross-device PDF rendering
+            // This works on both mobile and desktop, displaying the PDF content directly
+            const googleDocsUrl = 'https://docs.google.com/viewer?url=' + encodeURIComponent(url) + '&embedded=true';
+            pdfFrame.src = googleDocsUrl;
+            
             document.getElementById('pdf-modal').style.display = 'flex';
             document.body.style.overflow = 'hidden';
+            resetZoom();
         }}
         
         function closePdf() {{
             document.getElementById('pdf-modal').style.display = 'none';
             document.getElementById('pdf-frame').src = '';
             document.body.style.overflow = '';
+            resetZoom();
+        }}
+
+        function updateZoomLevel() {{
+            document.getElementById('zoom-level').textContent = Math.round(currentZoom * 100) + '%';
+            const pdfFrame = document.getElementById('pdf-frame');
+            
+            // Apply scale transform to the iframe
+            pdfFrame.style.transform = 'scale(' + currentZoom + ')';
+            
+            // Resize iframe to compensate for scaling so scrolling works correctly
+            pdfFrame.style.width = (100 / currentZoom) + '%';
+            pdfFrame.style.height = (100 / currentZoom) + '%';
+        }}
+
+        function zoomIn() {{
+            if (currentZoom < MAX_ZOOM) {{
+                currentZoom = Math.min(currentZoom + ZOOM_STEP, MAX_ZOOM);
+                updateZoomLevel();
+            }}
+        }}
+
+        function zoomOut() {{
+            if (currentZoom > MIN_ZOOM) {{
+                currentZoom = Math.max(currentZoom - ZOOM_STEP, MIN_ZOOM);
+                updateZoomLevel();
+            }}
+        }}
+
+        function resetZoom() {{
+            currentZoom = 1;
+            updateZoomLevel();
         }}
 
         // ESC to close
