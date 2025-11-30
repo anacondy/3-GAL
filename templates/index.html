@@ -627,9 +627,17 @@
         const MAX_ZOOM = 3;
 
         // Detect if device is mobile/tablet (for opening PDFs directly)
+        // Uses multiple detection strategies for reliability:
+        // 1. User agent regex for common mobile devices
+        // 2. Touch capability combined with small viewport as a fallback
         function isMobileDevice() {
-            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) 
-                   || (window.innerWidth <= 768 && 'ontouchstart' in window);
+            // Primary detection: User agent check for mobile devices
+            const mobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            
+            // Secondary detection: Touch device with mobile-sized viewport
+            const touchWithSmallViewport = ('ontouchstart' in window || navigator.maxTouchPoints > 0) && window.innerWidth <= 768;
+            
+            return mobileUserAgent || touchWithSmallViewport;
         }
 
         function openPdf(url) {
@@ -643,7 +651,6 @@
             
             // On desktop, use the modal with zoom support
             const pdfFrame = document.getElementById('pdf-frame');
-            const pdfContainer = document.getElementById('pdf-container');
             
             // Set the PDF URL
             pdfFrame.src = url;
@@ -664,7 +671,6 @@
         function updateZoomLevel() {
             document.getElementById('zoom-level').textContent = Math.round(currentZoom * 100) + '%';
             const pdfFrame = document.getElementById('pdf-frame');
-            const pdfContainer = document.getElementById('pdf-container');
             
             // Apply scale transform to the iframe
             pdfFrame.style.transform = `scale(${currentZoom})`;
