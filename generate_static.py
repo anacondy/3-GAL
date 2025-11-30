@@ -178,7 +178,7 @@ def generate_full_static_html(announcements):
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#0f0f0f">
     <meta name="description" content="Galgotias University Examination Announcements - Live Updates">
     <title>DESTINY // EXAMS - Galgotias University</title>
@@ -205,6 +205,7 @@ def generate_full_static_html(announcements):
             min-height: 100vh;
             display: flex; flex-direction: column; align-items: center;
             -webkit-font-smoothing: antialiased;
+            touch-action: pan-x pan-y;
         }}
         #particle-canvas {{
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -292,7 +293,7 @@ def generate_full_static_html(announcements):
             flex-wrap: wrap;
             justify-content: center;
         }}
-        #pdf-frame {{ width: 85%; height: 80%; border: 1px solid var(--text-accent); background: #fff; }}
+        #pdf-frame {{ width: 85%; height: 80%; border: 1px solid var(--text-accent); background: #fff; touch-action: auto; }}
         /* PDF Loading Indicator */
         .pdf-loading {{
             display: none;
