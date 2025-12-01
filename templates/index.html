@@ -306,9 +306,26 @@
         
         /* Mobile devices (16:9 and 20:9 aspect ratios) */
         @media screen and (max-width: 480px) {
+            html, body {
+                overflow-x: hidden;
+            }
+            body {
+                min-height: auto;
+                overflow-y: auto;
+            }
             h1 { font-size: 2.2rem; letter-spacing: 2px; }
             .graffiti-tag { font-size: 0.9rem; right: 5%; }
-            .container { width: 95%; margin-top: 2vh; gap: 15px; }
+            .container {
+                width: 95%;
+                margin-top: 2vh;
+                gap: 15px;
+                min-height: auto;
+            }
+            .results-container {
+                overflow-y: visible;
+                flex-grow: 0;
+                max-height: none;
+            }
             #search-input { padding: 12px 15px; font-size: 1rem; }
             .exam-card { padding: 15px; margin-bottom: 10px; }
             .card-title { font-size: 1rem; }
@@ -363,19 +380,19 @@
         /* Tall mobile screens (20:9 like modern phones) */
         @media screen and (max-width: 480px) and (min-aspect-ratio: 9/19) {
             .container { margin-top: 3vh; }
-            .results-container { max-height: 70vh; }
+            .results-container { max-height: none; overflow-y: visible; }
         }
 
         /* Standard mobile (16:9) */
         @media screen and (max-width: 480px) and (max-aspect-ratio: 9/16) {
-            .results-container { max-height: 65vh; }
+            .results-container { max-height: none; overflow-y: visible; }
         }
 
         /* Landscape mobile */
         @media screen and (max-height: 500px) and (orientation: landscape) {
             .container { margin-top: 2vh; }
             h1 { font-size: 2rem; }
-            .results-container { max-height: 50vh; }
+            .results-container { max-height: none; overflow-y: visible; }
             #pdf-frame { height: 60%; }
         }
 
