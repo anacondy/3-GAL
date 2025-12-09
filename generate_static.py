@@ -20,6 +20,10 @@ HEADERS = {
 }
 OUTPUT_DIR = "static_site"
 
+# Maximum number of announcements to keep
+# When this limit is reached, oldest announcements will be automatically removed
+MAX_ANNOUNCEMENTS = 470
+
 
 def fetch_announcements():
     """Fetch announcements from the university website."""
@@ -89,6 +93,11 @@ def fetch_announcements():
                 "url": href,
                 "category": categorize_title(title)
             })
+
+        # Apply MAX_ANNOUNCEMENTS limit - keep only the most recent ones
+        if len(announcements) > MAX_ANNOUNCEMENTS:
+            print(f"--- [CLEANUP] Limiting announcements from {len(announcements)} to {MAX_ANNOUNCEMENTS} (keeping most recent) ---")
+            announcements = announcements[:MAX_ANNOUNCEMENTS]
 
         print(f"--- [SYSTEM] FETCHED {len(announcements)} ANNOUNCEMENTS ---")
         return announcements
@@ -454,7 +463,7 @@ def generate_full_static_html(announcements):
         </div>
 
         <div class="stats">
-            📢 {len(announcements)} announcements loaded
+            📢 {len(announcements)} announcements loaded (max {MAX_ANNOUNCEMENTS})
         </div>
 
         <div class="results-container" id="results-list">
