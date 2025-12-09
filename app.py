@@ -147,8 +147,9 @@ def cleanup_old_announcements():
             # Calculate how many to delete
             to_delete = count - MAX_ANNOUNCEMENTS
             
-            # More efficient: Delete by comparing with the Nth oldest id
-            # First, get the id threshold (the id of the Nth oldest record we want to keep)
+            # More efficient: Delete by comparing with the ID threshold
+            # Get the ID of the oldest record we want to KEEP (i.e., the first one after deletion)
+            # This is the (to_delete + 1)th record, which becomes the oldest after cleanup
             c.execute("""
                 SELECT id FROM announcements 
                 ORDER BY id ASC 
@@ -159,7 +160,7 @@ def cleanup_old_announcements():
             if threshold_row:
                 threshold_id = threshold_row[0]
                 
-                # Delete all records with id less than threshold
+                # Delete all records with id less than threshold (these are the oldest to_delete records)
                 c.execute("DELETE FROM announcements WHERE id < ?", (threshold_id,))
                 
                 deleted_count = c.rowcount

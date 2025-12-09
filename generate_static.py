@@ -26,38 +26,37 @@ MAX_ANNOUNCEMENTS = 470
 
 
 def parse_date_for_sorting(date_text):
-    """Parse date text to a sortable format. Returns a tuple for sorting."""
+    """Parse date text to a sortable format. Returns a datetime object for sorting."""
     try:
         # Try DD-MM-YYYY format
-        from datetime import datetime as dt
         if '-' in date_text or '/' in date_text:
             separator = '-' if '-' in date_text else '/'
             parts = date_text.split(separator)
             if len(parts) == 3:
                 # Try DD-MM-YYYY
                 try:
-                    return dt.strptime(date_text, f'%d{separator}%m{separator}%Y')
+                    return datetime.strptime(date_text, f'%d{separator}%m{separator}%Y')
                 except:
                     pass
                 # Try DD-MM-YY
                 try:
-                    return dt.strptime(date_text, f'%d{separator}%m{separator}%y')
+                    return datetime.strptime(date_text, f'%d{separator}%m{separator}%y')
                 except:
                     pass
         # Try other formats like "01 January 2024"
         try:
-            return dt.strptime(date_text, '%d %B %Y')
+            return datetime.strptime(date_text, '%d %B %Y')
         except:
             pass
         try:
-            return dt.strptime(date_text, '%d %b %Y')
+            return datetime.strptime(date_text, '%d %b %Y')
         except:
             pass
     except:
         pass
     # If parsing fails, return current date as fallback
-    from datetime import datetime as dt
-    return dt.now()
+    return datetime.now()
+
 
 
 def fetch_announcements():
