@@ -48,6 +48,10 @@ HEADERS = {
 REQUEST_TIMEOUT = 15
 PDF_DOWNLOAD_TIMEOUT = 30
 
+# Maximum number of announcements to keep in database
+# When this limit is reached, oldest announcements will be automatically deleted
+MAX_ANNOUNCEMENTS = 470
+
 # Thread pool for async operations
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
@@ -118,11 +122,58 @@ def init_db():
                 VALUES (new.id, new.title, new.date_text, new.pdf_summary, new.translated_title, new.category);
             END
         ''')
+        c.execute('''
+            CREATE TRIGGER IF NOT EXISTS announcements_ad AFTER DELETE ON announcements BEGIN
+                DELETE FROM announcements_fts WHERE rowid = old.id;
+            END
+        ''')
     except Exception as e:
         print(f"Trigger creation skipped (may already exist): {e}")
     
     conn.commit()
     conn.close()
+
+
+def cleanup_old_announcements():
+    """Remove oldest announcements if count exceeds MAX_ANNOUNCEMENTS."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    try:
+        # Get current count
+        c.execute("SELECT COUNT(*) FROM announcements")
+        count = c.fetchone()[0]
+        
+        if count > MAX_ANNOUNCEMENTS:
+            # Calculate how many to delete
+            to_delete = count - MAX_ANNOUNCEMENTS
+            
+            # More efficient: Delete by comparing with the ID threshold
+            # Get the ID of the oldest record we want to KEEP (i.e., the first one after deletion)
+            # This is the (to_delete + 1)th record, which becomes the oldest after cleanup
+            c.execute("""
+                SELECT id FROM announcements 
+                ORDER BY id ASC 
+                LIMIT 1 OFFSET ?
+            """, (to_delete,))
+            
+            threshold_row = c.fetchone()
+            if threshold_row:
+                threshold_id = threshold_row[0]
+                
+                # Delete all records with id less than threshold (these are the oldest to_delete records)
+                c.execute("DELETE FROM announcements WHERE id < ?", (threshold_id,))
+                
+                deleted_count = c.rowcount
+                conn.commit()
+                print(f"--- [CLEANUP] Deleted {deleted_count} old announcements (kept latest {MAX_ANNOUNCEMENTS}) ---")
+                return deleted_count
+        
+        return 0
+    except Exception as e:
+        print(f"Cleanup Error: {e}")
+        return 0
+    finally:
+        conn.close()
 
 
 def save_announcement(date_text, title, url, pdf_summary=None, category=None, translated_title=None):
@@ -616,7 +667,18 @@ def scrape_and_sync(analyze_pdfs=True):
             for url in urls_to_analyze[:20]:  # Limit to 20 for performance
                 analyze_pdf_async(url)
 
+        # Cleanup old announcements if we exceed the limit
+        deleted = cleanup_old_announcements()
+        
+        # Get final count after cleanup
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM announcements")
+        total_count = c.fetchone()[0]
+        conn.close()
+        
         print(f"--- [SYSTEM] SYNC COMPLETE. {count} ITEMS PROCESSED. ---")
+        print(f"--- [SYSTEM] TOTAL ANNOUNCEMENTS IN DB: {total_count} (max: {MAX_ANNOUNCEMENTS}) ---")
         return True, count
     except Exception as e:
         print(f"--- [ERROR] SCRAPE FAILED: {e} ---")
@@ -633,8 +695,12 @@ def index():
 
     # Check if DB is empty, if so, scrape immediately
     c.execute("SELECT COUNT(*) FROM announcements")
-    if c.fetchone()[0] == 0:
+    total_count = c.fetchone()[0]
+    if total_count == 0:
         scrape_and_sync()
+        # Re-count after sync
+        c.execute("SELECT COUNT(*) FROM announcements")
+        total_count = c.fetchone()[0]
 
     # Get latest 100 items with all fields
     c.execute("SELECT * FROM announcements ORDER BY id DESC LIMIT 100")
@@ -642,16 +708,26 @@ def index():
     data = [dict(row) for row in rows]
     conn.close()
 
-    return render_template('index.html', initial_data=data)
+    return render_template('index.html', initial_data=data, total_count=total_count, max_limit=MAX_ANNOUNCEMENTS)
 
 
 @app.route('/api/sync', methods=['POST'])
 def sync():
     success, count = scrape_and_sync()
+    
+    # Get total count from database
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM announcements")
+    total_count = c.fetchone()[0]
+    conn.close()
+    
     return jsonify({
         "status": "success" if success else "error",
         "count": count,
-        "message": f"Synchronized {count} announcements" if success else "Sync failed"
+        "total": total_count,
+        "max_limit": MAX_ANNOUNCEMENTS,
+        "message": f"Synchronized {count} announcements (Total: {total_count}/{MAX_ANNOUNCEMENTS})" if success else "Sync failed"
     })
 
 

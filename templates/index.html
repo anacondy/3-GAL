@@ -302,6 +302,21 @@
         #feature-registry li { margin-bottom: 5px; }
         #feature-registry span { color: var(--text-graffiti); }
 
+        /* Stats Display */
+        .stats {
+            text-align: center;
+            font-size: 0.9rem;
+            color: var(--text-graffiti);
+            padding: 10px;
+            background: rgba(0,0,0,0.3);
+            margin-bottom: 10px;
+            border: 1px solid var(--border-color);
+        }
+        .stats .count {
+            color: var(--text-accent);
+            font-weight: bold;
+        }
+
         /* --- RESPONSIVE DESIGN --- */
         
         /* Mobile devices (16:9 and 20:9 aspect ratios) */
@@ -459,6 +474,10 @@
             <div class="loading-indicator" id="search-loading"></div>
         </div>
 
+        <div class="stats" id="stats-display">
+            📢 <span class="count" id="total-count">{{ total_count }}</span> announcements in database (max <span class="count">{{ max_limit }}</span>)
+        </div>
+
         <div class="results-container" id="results-list">
             {% for item in initial_data %}
             <div class="exam-card gpu-accelerate" data-url="{{ item.url }}">
@@ -589,12 +608,19 @@
 
         async function triggerSync() {
             const btn = document.getElementById('sync-btn');
+            const totalCountEl = document.getElementById('total-count');
             btn.innerText = "[ FETCHING LIVE DATA... ]";
             btn.disabled = true;
             try {
                 const res = await fetch('/api/sync', { method: 'POST' });
                 const data = await res.json();
                 btn.innerText = `[ SYNC COMPLETE: ${data.count || 0} ITEMS ]`;
+                
+                // Update the total count display
+                if (data.total !== undefined) {
+                    totalCountEl.textContent = data.total;
+                }
+                
                 setTimeout(() => {
                     btn.innerText = "[ SYNC SERVER ]";
                     btn.disabled = false;

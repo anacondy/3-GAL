@@ -71,5 +71,9 @@ tmp/
 temp/
 *.tmp
 
+# Test files
+test_*.py
+test_*.db
+
 # Generated static site
 static_site/

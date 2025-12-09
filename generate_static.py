@@ -20,6 +20,44 @@ HEADERS = {
 }
 OUTPUT_DIR = "static_site"
 
+# Maximum number of announcements to keep
+# When this limit is reached, oldest announcements will be automatically removed
+MAX_ANNOUNCEMENTS = 470
+
+
+def parse_date_for_sorting(date_text):
+    """Parse date text to a sortable format. Returns a datetime object for sorting."""
+    try:
+        # Try DD-MM-YYYY format
+        if '-' in date_text or '/' in date_text:
+            separator = '-' if '-' in date_text else '/'
+            parts = date_text.split(separator)
+            if len(parts) == 3:
+                # Try DD-MM-YYYY
+                try:
+                    return datetime.strptime(date_text, f'%d{separator}%m{separator}%Y')
+                except:
+                    pass
+                # Try DD-MM-YY
+                try:
+                    return datetime.strptime(date_text, f'%d{separator}%m{separator}%y')
+                except:
+                    pass
+        # Try other formats like "01 January 2024"
+        try:
+            return datetime.strptime(date_text, '%d %B %Y')
+        except:
+            pass
+        try:
+            return datetime.strptime(date_text, '%d %b %Y')
+        except:
+            pass
+    except:
+        pass
+    # If parsing fails, return current date as fallback
+    return datetime.now()
+
+
 
 def fetch_announcements():
     """Fetch announcements from the university website."""
@@ -89,6 +127,14 @@ def fetch_announcements():
                 "url": href,
                 "category": categorize_title(title)
             })
+
+        # Sort announcements by date (most recent first) to ensure we keep the newest ones
+        announcements.sort(key=lambda x: parse_date_for_sorting(x.get('date_text', '')), reverse=True)
+
+        # Apply MAX_ANNOUNCEMENTS limit - keep only the most recent ones
+        if len(announcements) > MAX_ANNOUNCEMENTS:
+            print(f"--- [CLEANUP] Limiting announcements from {len(announcements)} to {MAX_ANNOUNCEMENTS} (keeping most recent) ---")
+            announcements = announcements[:MAX_ANNOUNCEMENTS]
 
         print(f"--- [SYSTEM] FETCHED {len(announcements)} ANNOUNCEMENTS ---")
         return announcements
@@ -454,7 +500,7 @@ def generate_full_static_html(announcements):
         </div>
 
         <div class="stats">
-            📢 {len(announcements)} announcements loaded
+            📢 {len(announcements)} announcements loaded (max {MAX_ANNOUNCEMENTS})
         </div>
 
         <div class="results-container" id="results-list">
