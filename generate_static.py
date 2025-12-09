@@ -25,6 +25,41 @@ OUTPUT_DIR = "static_site"
 MAX_ANNOUNCEMENTS = 470
 
 
+def parse_date_for_sorting(date_text):
+    """Parse date text to a sortable format. Returns a tuple for sorting."""
+    try:
+        # Try DD-MM-YYYY format
+        from datetime import datetime as dt
+        if '-' in date_text or '/' in date_text:
+            separator = '-' if '-' in date_text else '/'
+            parts = date_text.split(separator)
+            if len(parts) == 3:
+                # Try DD-MM-YYYY
+                try:
+                    return dt.strptime(date_text, f'%d{separator}%m{separator}%Y')
+                except:
+                    pass
+                # Try DD-MM-YY
+                try:
+                    return dt.strptime(date_text, f'%d{separator}%m{separator}%y')
+                except:
+                    pass
+        # Try other formats like "01 January 2024"
+        try:
+            return dt.strptime(date_text, '%d %B %Y')
+        except:
+            pass
+        try:
+            return dt.strptime(date_text, '%d %b %Y')
+        except:
+            pass
+    except:
+        pass
+    # If parsing fails, return current date as fallback
+    from datetime import datetime as dt
+    return dt.now()
+
+
 def fetch_announcements():
     """Fetch announcements from the university website."""
     print("--- [SYSTEM] FETCHING LIVE DATA... ---")
@@ -93,6 +128,9 @@ def fetch_announcements():
                 "url": href,
                 "category": categorize_title(title)
             })
+
+        # Sort announcements by date (most recent first) to ensure we keep the newest ones
+        announcements.sort(key=lambda x: parse_date_for_sorting(x.get('date_text', '')), reverse=True)
 
         # Apply MAX_ANNOUNCEMENTS limit - keep only the most recent ones
         if len(announcements) > MAX_ANNOUNCEMENTS:

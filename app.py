@@ -122,6 +122,11 @@ def init_db():
                 VALUES (new.id, new.title, new.date_text, new.pdf_summary, new.translated_title, new.category);
             END
         ''')
+        c.execute('''
+            CREATE TRIGGER IF NOT EXISTS announcements_ad AFTER DELETE ON announcements BEGIN
+                DELETE FROM announcements_fts WHERE rowid = old.id;
+            END
+        ''')
     except Exception as e:
         print(f"Trigger creation skipped (may already exist): {e}")
     
@@ -142,20 +147,25 @@ def cleanup_old_announcements():
             # Calculate how many to delete
             to_delete = count - MAX_ANNOUNCEMENTS
             
-            # Delete oldest announcements by id (oldest first)
+            # More efficient: Delete by comparing with the Nth oldest id
+            # First, get the id threshold (the id of the Nth oldest record we want to keep)
             c.execute("""
-                DELETE FROM announcements 
-                WHERE id IN (
-                    SELECT id FROM announcements 
-                    ORDER BY id ASC 
-                    LIMIT ?
-                )
+                SELECT id FROM announcements 
+                ORDER BY id ASC 
+                LIMIT 1 OFFSET ?
             """, (to_delete,))
             
-            deleted_count = c.rowcount
-            conn.commit()
-            print(f"--- [CLEANUP] Deleted {deleted_count} old announcements (kept latest {MAX_ANNOUNCEMENTS}) ---")
-            return deleted_count
+            threshold_row = c.fetchone()
+            if threshold_row:
+                threshold_id = threshold_row[0]
+                
+                # Delete all records with id less than threshold
+                c.execute("DELETE FROM announcements WHERE id < ?", (threshold_id,))
+                
+                deleted_count = c.rowcount
+                conn.commit()
+                print(f"--- [CLEANUP] Deleted {deleted_count} old announcements (kept latest {MAX_ANNOUNCEMENTS}) ---")
+                return deleted_count
         
         return 0
     except Exception as e:
