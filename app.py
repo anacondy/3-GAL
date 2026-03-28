@@ -34,6 +34,28 @@ try:
 except ImportError:
     TRANSLATOR_AVAILABLE = False
 
+
+def get_short_desc(title, category):
+    import re
+    title_lower = title.lower()
+    date_match = re.search(r'\b(\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*(?:20\d{2})?)\b', title_lower)
+    if date_match: return f"Deadline/Dates: {date_match.group(1).title()}"
+    if 'debarred' in title_lower: return "Action required: Details regarding debarred students for exams."
+    if 'fee' in title_lower or 'dues' in title_lower: return "Financial Notice: Please review fee submission deadlines."
+    if 'result' in title_lower: return "Academic Update: Examination results have been declared."
+    if 'admit card' in title_lower: return "Important: Admit cards are now available."
+    if 'date sheet' in title_lower or 'timetable' in title_lower or 'schedule' in title_lower: return "Exam Schedule: Check the latest dates and timings."
+    if 'holiday' in title_lower or 'vacation' in title_lower: return "Campus Update: Information regarding upcoming holidays."
+    if 'special' in title_lower and 'exam' in title_lower: return "Special Exams: Important instructions and dates."
+    if category == 'Exam': return "Read the official document for exam instructions and paper codes."
+    elif category == 'Admissions': return "Review the admission guidelines and counseling procedures."
+    return "Click to view full official notification document."
+    
+def enhance_data(data_list):
+    for item in data_list:
+        item['desc'] = get_short_desc(item.get('title', ''), item.get('category', 'Notice'))
+    return data_list
+
 app = Flask(__name__)
 
 # --- Configuration ---
@@ -224,7 +246,7 @@ def comprehensive_search(query):
         c.execute("SELECT * FROM announcements ORDER BY id DESC LIMIT 100")
         rows = c.fetchall()
         conn.close()
-        return [dict(row) for row in rows]
+        return enhance_data([dict(row) for row in rows])
     
     # Strategy 1: Try FTS5 search for complex queries
     try:
@@ -462,27 +484,17 @@ def categorize_document(text):
     text_lower = text.lower()
     
     # Category patterns
-    categories = {
-        "Examination": ['exam', 'examination', 'paper code', 'paper-code', 'answer sheet', 'question paper', 
-                       'time table', 'timetable', 'date sheet', 'datesheet', 'hall ticket', 'admit card',
-                       'semester', 'internal', 'external', 'mid-term', 'end-term', 'practical', 'viva'],
-        "Academic Calendar": ['academic calendar', 'holiday', 'vacation', 'session', 'semester start',
-                             'semester end', 'registration', 'enrollment'],
-        "Result": ['result', 'marks', 'grade', 'cgpa', 'sgpa', 'transcript', 'marksheet'],
-        "Fee Notice": ['fee', 'payment', 'dues', 'scholarship', 'financial', 'refund'],
-        "Admission": ['admission', 'intake', 'enrollment', 'counseling', 'merit list'],
-        "Uniform/Dress Code": ['uniform', 'dress code', 'dress-code', 'attire', 'id card'],
-        "Event": ['event', 'festival', 'function', 'celebration', 'cultural', 'sports'],
-        "Assignment/Project": ['assignment', 'project', 'submission', 'deadline', 'thesis', 'dissertation'],
-        "Internship/Placement": ['internship', 'placement', 'job', 'recruitment', 'campus drive', 'interview'],
-        "Important Dates": ['important date', 'last date', 'deadline', 'schedule', 'timing']
-    }
     
-    for category, keywords in categories.items():
-        if any(kw in text_lower for kw in keywords):
-            return category
-    
-    return "General Notice"
+    if any(kw in text_lower for kw in ['result', 'marks', 'grade', 'cgpa', 'transcript']): return "Result"
+    if any(kw in text_lower for kw in ['fee', 'payment', 'dues', 'scholarship', 'fine']): return "Fees"
+    if any(kw in text_lower for kw in ['holiday', 'vacation', 'closure']): return "Holiday"
+    if any(kw in text_lower for kw in ['event', 'festival', 'celebration', 'cultural']): return "Event"
+    if any(kw in text_lower for kw in ['admission', 'intake', 'enrollment', 'counseling']): return "Admissions"
+    if any(kw in text_lower for kw in ['exam', 'examination', 'paper code', 'date sheet', 'timetable', 'hall ticket', 'admit card', 'debarred']): return "Exam"
+    if any(kw in text_lower for kw in ['academic calendar', 'session']): return "Calendar"
+    return "Notice"
+
+    return "Notice"
 
 
 def extract_key_info(text):
@@ -601,63 +613,57 @@ def scrape_and_sync(analyze_pdfs=True):
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        # Strategy 1: Find 'View Detail' links and parse parent text
-        links = soup.find_all("a", string=re.compile(r"View Detail", re.I))
-        
-        # Strategy 2: Also look for direct PDF links
+                # Unified Strategy for new HTML structure
         pdf_links = soup.find_all("a", href=re.compile(r"\.pdf", re.I))
 
         count = 0
         urls_to_analyze = []
-        
-        for link in links:
-            href = link.get("href", "").strip()
-            if not href:
-                continue
-            if not href.startswith("http"):
-                href = BASE_URL + href
+        seen_urls = set()
 
-            # Parent container text holds the Date and Title
-            container = link.parent
-            if not container:
-                continue
-            raw_text = container.get_text(" ", strip=True)
-
-            # Extract Date (DD-MM-YYYY or other formats)
-            date_match = re.search(r"\b(\d{2}[-/]\d{2}[-/]\d{4})\b", raw_text)
-            
-            if not date_match:
-                # Try alternate date format
-                date_match = re.search(r"\b(\d{1,2}\s+\w+\s+\d{4})\b", raw_text)
-
-            if date_match:
-                date_text = date_match.group(1)
-                # Remove Date and 'View Detail' to get Title
-                title = raw_text.replace(date_text, "").replace("View Detail", "").strip()
-                title = re.sub(r"^[\.\-\:\s]+", "", title)  # Clean leading punctuation
-
-                save_announcement(date_text, title, href)
-                urls_to_analyze.append(href)
-                count += 1
-
-        # Also process direct PDF links
         for link in pdf_links:
             href = link.get("href", "").strip()
-            if not href:
+            if not href or href in seen_urls:
                 continue
+                
+            seen_urls.add(href)
             if not href.startswith("http"):
                 href = BASE_URL + href
-            
-            # Get title from link text or parent
-            title = link.get_text(strip=True) or "PDF Document"
-            if title in ["View Detail", "Download", "Click Here"]:
-                parent = link.parent
+
+            # Extract info from the parent node
+            parent = link.parent
+            if parent:
+                # Use string separator space, then clean up extra spaces
+                raw_text = parent.get_text(" ", strip=True)
+                raw_text = re.sub(r'\s+', ' ', raw_text)
+
+                # Find date using regex
+                date_match = re.search(r"\b(\d{2}[-/]\d{2}[-/]\d{4})\b", raw_text)  
+                if not date_match:
+                    date_match = re.search(r"\b(\d{1,2}\s+\w+\s+\d{4})\b", raw_text)
+
+                if date_match:
+                    date_text = date_match.group(1)
+                    # Clean title by removing date and matching "View Detail" variants
+                    title = raw_text.replace(date_text, "")
+                    title = re.sub(r'View\s*Detail', '', title, flags=re.IGNORECASE)
+                    title = title.strip()
+                    title = re.sub(r"^[\.\-\:\s]+", "", title)  # Clean leading punctuation
+                    
+                    if title:
+                        save_announcement(date_text, title, href)
+                        urls_to_analyze.append(href)
+                        count += 1
+                        continue
+
+            # Fallback if no date found or parent extraction fails
+            title = link.get_text(" ", strip=True)
+            title = re.sub(r'\s+', ' ', title)
+            if re.search(r'view\s*detail|download|click\s*here', title, re.IGNORECASE):
                 if parent:
-                    title = parent.get_text(" ", strip=True)[:100]
-            
-            # Use current date if not found
+                    title = re.sub(r'\s+', ' ', parent.get_text(" ", strip=True))[:100]
+                    title = re.sub(r'View\s*Detail', '', title, flags=re.IGNORECASE).strip()
+
             date_text = datetime.now().strftime("%d-%m-%Y")
-            
             save_announcement(date_text, title, href)
             urls_to_analyze.append(href)
             count += 1

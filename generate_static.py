@@ -69,63 +69,65 @@ def fetch_announcements():
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        # Strategy 1: Find 'View Detail' links
-        links = soup.find_all("a", string=re.compile(r"View Detail", re.I))
-
-        for link in links:
-            href = link.get("href", "").strip()
-            if not href:
-                continue
-            if not href.startswith("http"):
-                href = BASE_URL + href
-
-            container = link.parent
-            if not container:
-                continue
-            raw_text = container.get_text(" ", strip=True)
-
-            date_match = re.search(r"\b(\d{2}[-/]\d{2}[-/]\d{4})\b", raw_text)
-            if not date_match:
-                date_match = re.search(r"\b(\d{1,2}\s+\w+\s+\d{4})\b", raw_text)
-
-            if date_match:
-                date_text = date_match.group(1)
-                title = raw_text.replace(date_text, "").replace("View Detail", "").strip()
-                title = re.sub(r"^[\.\-\:\s]+", "", title)
-
-                announcements.append({
-                    "date_text": date_text,
-                    "title": title,
-                    "url": href,
-                    "category": categorize_title(title)
-                })
-
-        # Strategy 2: Also look for direct PDF links
+                # Unified Strategy for new HTML structure
         pdf_links = soup.find_all("a", href=re.compile(r"\.pdf", re.I))
+        seen_urls = set()
+
         for link in pdf_links:
             href = link.get("href", "").strip()
-            if not href:
+            if not href or href in seen_urls:
                 continue
+                
+            seen_urls.add(href)
             if not href.startswith("http"):
                 href = BASE_URL + href
-            
-            # Check if we already have this URL
-            if any(a["url"] == href for a in announcements):
-                continue
-            
-            title = link.get_text(strip=True) or "PDF Document"
-            if title in ["View Detail", "Download", "Click Here"]:
-                parent = link.parent
+
+            # Extract info from the parent node
+            parent = link.parent
+            if parent:
+                # Use string separator space, then clean up extra spaces
+                raw_text = parent.get_text(" ", strip=True)
+                raw_text = re.sub(r'\s+', ' ', raw_text)
+
+                # Find date using regex
+                date_match = re.search(r"\b(\d{2}[-/]\d{2}[-/]\d{4})\b", raw_text)  
+                if not date_match:
+                    date_match = re.search(r"\b(\d{1,2}\s+\w+\s+\d{4})\b", raw_text)
+
+                if date_match:
+                    date_text = date_match.group(1)
+                    # Clean title by removing date and matching "View Detail" variants
+                    title = raw_text.replace(date_text, "")
+                    title = re.sub(r'View\s*Detail', '', title, flags=re.IGNORECASE)
+                    title = title.strip()
+                    title = re.sub(r"^[\.\-\:\s]+", "", title)  # Clean leading punctuation
+                    
+                    if title:
+                        announcements.append({
+                            "date_text": date_text,
+                            "title": title,
+                            "url": href,
+                            "category": categorize_title(title),
+                    "desc": get_short_desc(title, categorize_title(title))
+                        })
+                        continue
+
+            # Fallback if no date found or parent extraction fails
+            title = link.get_text(" ", strip=True)
+            title = re.sub(r'\s+', ' ', title)
+            if re.search(r'view\s*detail|download|click\s*here', title, re.IGNORECASE):
                 if parent:
-                    title = parent.get_text(" ", strip=True)[:100]
-            
+                    title = re.sub(r'\s+', ' ', parent.get_text(" ", strip=True))[:100]
+                    title = re.sub(r'View\s*Detail', '', title, flags=re.IGNORECASE).strip()
+
             date_text = datetime.now().strftime("%d-%m-%Y")
             
             announcements.append({
                 "date_text": date_text,
                 "title": title,
                 "url": href,
-                "category": categorize_title(title)
+                "category": categorize_title(title),
+                    "desc": get_short_desc(title, categorize_title(title))
             })
 
         # Sort announcements by date (most recent first) to ensure we keep the newest ones
@@ -144,23 +146,31 @@ def fetch_announcements():
         return []
 
 
-def categorize_title(title):
-    """Categorize announcement based on title."""
+def get_short_desc(title, category):
     title_lower = title.lower()
-    
-    categories = {
-        "Examination": ['exam', 'examination', 'paper code', 'time table', 'datesheet', 'hall ticket', 'admit card'],
-        "Result": ['result', 'marks', 'grade', 'cgpa', 'transcript'],
-        "Academic Calendar": ['academic calendar', 'holiday', 'vacation', 'session'],
-        "Fee Notice": ['fee', 'payment', 'dues', 'scholarship'],
-        "Admission": ['admission', 'intake', 'enrollment', 'counseling'],
-    }
-    
-    for category, keywords in categories.items():
-        if any(kw in title_lower for kw in keywords):
-            return category
-    
-    return "General Notice"
+    date_match = re.search(r'\b(\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*(?:20\d{2})?)\b', title_lower)
+    if date_match: return f"Deadline/Dates: {date_match.group(1).title()}"
+    if 'debarred' in title_lower: return "Action required: Details regarding debarred students for exams."
+    if 'fee' in title_lower or 'dues' in title_lower: return "Financial Notice: Please review fee submission deadlines."
+    if 'result' in title_lower: return "Academic Update: Examination results have been declared."
+    if 'admit card' in title_lower: return "Important: Admit cards are now available."
+    if 'date sheet' in title_lower or 'timetable' in title_lower or 'schedule' in title_lower: return "Exam Schedule: Check the latest dates and timings."
+    if 'holiday' in title_lower or 'vacation' in title_lower: return "Campus Update: Information regarding upcoming holidays."
+    if 'special' in title_lower and 'exam' in title_lower: return "Special Exams: Important instructions and dates."
+    if category == 'Exam': return "Read the official document for exam instructions and paper codes."
+    elif category == 'Admissions': return "Review the admission guidelines and counseling procedures."
+    return "Click to view full official notification document."
+
+def categorize_title(title):
+    title_lower = title.lower()
+    if any(kw in title_lower for kw in ['result', 'marks', 'grade', 'cgpa', 'transcript']): return "Result"
+    if any(kw in title_lower for kw in ['fee', 'payment', 'dues', 'scholarship', 'financial', 'fine']): return "Fees"
+    if any(kw in title_lower for kw in ['holiday', 'vacation', 'closure']): return "Holiday"
+    if any(kw in title_lower for kw in ['event', 'festival', 'celebration', 'cultural']): return "Event"
+    if any(kw in title_lower for kw in ['admission', 'intake', 'enrollment', 'counseling']): return "Admissions"
+    if any(kw in title_lower for kw in ['exam', 'examination', 'paper code', 'date sheet', 'timetable', 'hall ticket', 'admit card', 'debarred']): return "Exam"
+    if any(kw in title_lower for kw in ['academic calendar', 'session']): return "Calendar"
+    return "Notice"
 
 
 def generate_static_html(announcements):
@@ -208,7 +218,7 @@ def generate_full_static_html(announcements):
                 <div class="card-header">
                     <div>
                         <div class="card-date">{date_text}</div>
-                        <div class="card-title">{title}</div>
+                        <div class="card-title">{title}</div>\n                        <div class="card-desc" style="font-size:0.85rem; color:var(--text-graffiti); margin-top:8px; border-top:1px dashed rgba(140,140,115,0.2); padding-top:8px;">{item.get("desc", get_short_desc(title, item.get("category", "")))}</div>
                     </div>
                     {category_html}
                 </div>
@@ -247,7 +257,7 @@ def generate_full_static_html(announcements):
             background-color: var(--bg-color);
             color: var(--text-primary);
             font-family: 'Special Elite', monospace;
-            overflow-x: hidden;
+            overflow-x: hidden; overflow-y: visible;
             min-height: 100vh;
             display: flex; flex-direction: column; align-items: center;
             -webkit-font-smoothing: antialiased;
@@ -258,11 +268,7 @@ def generate_full_static_html(announcements):
             z-index: -1;
             background: radial-gradient(circle at center, rgba(40,35,30,0.2) 0%, rgba(0,0,0,0.95) 100%);
         }}
-        .container {{
-            width: 90%; max-width: 1000px; margin-top: 5vh; min-height: 90vh;
-            display: flex; flex-direction: column; gap: 20px; z-index: 10;
-            padding-bottom: 20px;
-        }}
+        .container {{ width: 90%; max-width: 1000px; margin-top: 5vh; display: flex; flex-direction: column; gap: 20px; z-index: 10; padding-bottom: 20px; }}
         header {{ text-align: center; position: relative; margin-bottom: 20px; }}
         h1 {{
             font-family: 'Oswald', sans-serif; font-size: 4rem;
@@ -292,7 +298,7 @@ def generate_full_static_html(announcements):
             box-shadow: 0 0 10px rgba(197, 179, 88, 0.3);
         }}
         .results-container {{
-            flex-grow: 1; overflow-y: auto;
+            flex-grow: 1; overflow-y: visible;
             border-top: 1px solid var(--border-color); padding-right: 10px;
         }}
         .results-container::-webkit-scrollbar {{ width: 6px; }}
@@ -576,9 +582,9 @@ def generate_full_static_html(announcements):
                 this.speedY = (Math.random() - 0.5) * 0.5;
                 this.alpha = Math.random() * 0.5;
             }}
-            update() {{
-                this.x += this.speedX;
-                this.y += this.speedY;
+            update(dt = 1) {{
+                this.x += this.speedX * dt;
+                this.y += this.speedY * dt;
                 this.alpha -= 0.002;
                 if(this.alpha <= 0) this.alpha = 0.5;
                 if(this.x > canvas.width) this.x = 0;
@@ -595,7 +601,7 @@ def generate_full_static_html(announcements):
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.beginPath();
             particles.forEach(p => {{
-                p.update();
+                p.update(typeof delta !== "undefined" ? typeof delta === "number" ? Math.min(delta, 5) : 1 : 1);
                 ctx.moveTo(p.x + p.size, p.y);
                 ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
             }});
