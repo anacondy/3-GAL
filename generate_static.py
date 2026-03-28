@@ -517,99 +517,14 @@ def generate_full_static_html(announcements):
     <script>
         // Store all cards for search
         const allCards = document.querySelectorAll('.exam-card');
-        const cardsData = Array.from(allCards).map(card => {{
-            return {{
-                element: card,
-                originalHTML: card.querySelector('.card-header').innerHTML,
-                textContent: card.textContent.toLowerCase()
-            }};
-        }});
-
-        function escapeRegExp(string) {{
-            return string.replace(/[.*+?^${{}}()|[\]\\]/g, '\\$&');
-        }}
-
-        function highlightMatch(html, query) {{
-            if (!query) return html;
-            const regex = new RegExp(`(${{escapeRegExp(query)}})`, 'gi');
-            return html.split(/(<[^>]*>)/).map(part => {{
-                if (part.startsWith('<')) return part;
-                return part.replace(regex, '<mark style="background-color: var(--text-accent); color: #000; padding: 0 2px; border-radius: 2px;">$1</mark>');
-            }}).join('');
-        }}
-
+        
         // Search functionality
-        const searchInput = document.getElementById('search-input');
-        searchInput.addEventListener('input', function(e) {{
-            const query = e.target.value.trim();
-            const queryLower = query.toLowerCase();
-
-            // Admin Logic
-            if(queryLower === 'upload') {{
-                setTimeout(() => {{
-                    const creds = prompt("ENTER ADMIN IDENTITY:");
-                    if(creds === "Alvido") {{
-                        alert("ACCESS GRANTED. (Static version - redirecting to registry)");
-                        document.getElementById('feature-registry').style.display = 'block';
-                    }}
-                }}, 500);
-            }}
-            
-            const resultsContainer = document.getElementById('results-list');
-            const matches = [];
-            const nonMatches = [];
-
-            cardsData.forEach(data => {{
-                const header = data.element.querySelector('.card-header');
-                if (query === '') {{
-                    data.element.style.display = 'block';
-                    header.innerHTML = data.originalHTML;
-                    matches.push(data.element);
-                }} else {{
-                    if (data.textContent.includes(queryLower)) {{
-                        data.element.style.display = 'block';
-                        header.innerHTML = highlightMatch(data.originalHTML, query);
-                        matches.push(data.element);
-                    }} else {{
-                        data.element.style.display = 'none';
-                        header.innerHTML = data.originalHTML;
-                        nonMatches.push(data.element);
-                    }}
-                }}
+        document.getElementById('search-input').addEventListener('input', function(e) {{
+            const query = e.target.value.toLowerCase();
+            allCards.forEach(card => {{
+                const text = card.textContent.toLowerCase();
+                card.style.display = text.includes(query) ? 'block' : 'none';
             }});
-
-            if (query !== '') {{
-                matches.forEach(m => resultsContainer.appendChild(m));
-                nonMatches.forEach(m => resultsContainer.appendChild(m));
-            }} else {{
-                matches.sort((a,b) => Array.from(allCards).indexOf(a) - Array.from(allCards).indexOf(b));
-                matches.forEach(m => resultsContainer.appendChild(m));
-            }}
-        }});
-
-        // HIDDEN REGISTRY & KEYBOARD SHORTCUTS
-        const keys = {{}};
-        window.addEventListener('keydown', e => {{
-            keys[e.key.toLowerCase()] = true;
-            if(keys['c'] && keys['o'] && keys['2']) {{
-                setTimeout(() => {{
-                    if(keys['c'] && keys['o'] && keys['2']) {{
-                        document.getElementById('feature-registry').style.display = 'block';
-                    }}
-                }}, 2000);
-            }}
-        }});
-        window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
-
-        document.addEventListener('keydown', (e) => {{
-            if(e.key === 'Escape') {{
-                closePdf();
-            }}
-            if ((e.ctrlKey && e.key === 'k') || (e.key === '/' && document.activeElement !== searchInput)) {{
-                e.preventDefault();
-                searchInput.focus();
-            }}
-        }});
         }});
 
         // PDF Viewer - Uses Google Docs Viewer for cross-device compatibility
@@ -695,6 +610,33 @@ def generate_full_static_html(announcements):
             requestAnimationFrame(animate);
         }}
         animate();
+
+        // Keyboard Shortcuts
+        const keys = {{}};
+        window.addEventListener('keydown', e => {{
+            keys[e.key.toLowerCase()] = true;
+            if(keys['c'] && keys['o'] && keys['2']) {{
+                setTimeout(() => {{
+                    if(keys['c'] && keys['o'] && keys['2']) {{
+                        const reg = document.getElementById('feature-registry');
+                        if (reg) reg.style.display = 'block';
+                    }}
+                }}, 2000);
+            }}
+        }});
+        window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+        document.addEventListener('keydown', (e) => {{
+            if(e.key === 'Escape') {{
+                const modal = document.getElementById('pdf-modal');
+                if (modal) modal.style.display = 'none';
+            }}
+            const searchInput = document.getElementById('search-input');
+            if((e.ctrlKey && e.key === 'k') || (e.key === '/' && document.activeElement !== searchInput)) {{
+                e.preventDefault();
+                if (searchInput) searchInput.focus();
+            }}
+        }});
     </script>
 </body>
 </html>'''
