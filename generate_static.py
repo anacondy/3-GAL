@@ -611,21 +611,6 @@ def generate_full_static_html(announcements):
         }}
         animate();
 
-        // Keyboard Shortcuts
-        const keys = {{}};
-        window.addEventListener('keydown', e => {{
-            keys[e.key.toLowerCase()] = true;
-            if(keys['c'] && keys['o'] && keys['2']) {{
-                setTimeout(() => {{
-                    if(keys['c'] && keys['o'] && keys['2']) {{
-                        const reg = document.getElementById('feature-registry');
-                        if (reg) reg.style.display = 'block';
-                    }}
-                }}, 2000);
-            }}
-        }});
-        window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
-
         document.addEventListener('keydown', (e) => {{
             if(e.key === 'Escape') {{
                 const modal = document.getElementById('pdf-modal');

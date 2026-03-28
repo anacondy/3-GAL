@@ -102,7 +102,6 @@ Click the **INTEL** button on any announcement card to get:
 |----------|--------|
 | `Ctrl + K` or `/` | Focus search |
 | `Escape` | Close modal/summary |
-| `C + O + 2` (hold 2s) | Show system registry |
 
 ### Admin Access
 

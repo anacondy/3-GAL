@@ -860,19 +860,6 @@
             }
         });
 
-        // --- 5. HIDDEN REGISTRY (C+O+2) ---
-        const keys = {};
-        window.addEventListener('keydown', e => {
-            keys[e.key.toLowerCase()] = true;
-            if(keys['c'] && keys['o'] && keys['2']) {
-                setTimeout(() => {
-                    if(keys['c'] && keys['o'] && keys['2'])
-                        document.getElementById('feature-registry').style.display = 'block';
-                }, 2000);
-            }
-        });
-        window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
-
         // --- 6. KEYBOARD SHORTCUTS ---
         document.addEventListener('keydown', (e) => {
             // ESC to close modals
