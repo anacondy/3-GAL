@@ -10,9 +10,13 @@ A dynamic, real-time web scraper for Galgotias University examination announceme
 
 **[View Live Site](https://anacondy.github.io/3-GAL/)** - Automatically updated daily with fresh announcements.
 
+> *[📸 Make sure to upload a new Screenshot/GIF here showing the newly updated UI with Tags and Context Descriptions!]*
+
 ## ✨ Features
 
 - **🔄 Real-time Scraping**: Live data synchronization from Galgotias University announcements
+- **📄 Smart Context Descriptions**: 1-line PDF summary/preview right on the dashboard
+- **🏷️ Category Tagging**: Instant visual tags (e.g. Exam, Fees) appended to cards
 - **🤖 AI PDF Analysis**: Intelligent document analysis with automatic categorization
 - **🔍 Comprehensive Search**: Full-text search with support for dates, paper codes, and various query patterns
 - **🌐 Hindi Translation**: Automatic detection and translation of Hindi PDFs to English
@@ -274,6 +278,23 @@ pyinstaller --onefile --add-data "templates:templates" app.py
 ### Database
 
 The application uses SQLite with FTS5 (Full-Text Search) for comprehensive search capabilities. The database is automatically created on first run.
+
+## 🔄 Version Management & Troubleshooting
+
+If experimental features break your site, you can revert back to the last known fully stable version (where short contexts, tags, and PDFs all worked perfectly).
+
+**The Stable Version (Commit: e1df46c)**
+- [Direct Link to Source Code for Version e1df46c](https://github.com/anacondy/3-GAL/tree/e1df46c)
+
+### How to manually restore to this stable version:
+If you mess up your local files or site structure, run these exact commands in your terminal:
+`ash
+# 1. Force your local codebase back to the stable commit
+git reset --hard e1df46c
+
+# 2. Force push this restored version back to GitHub to fix the live site
+git push -f origin main
+`
 
 ## 🤝 Contributing
 
