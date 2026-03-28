@@ -534,7 +534,7 @@
             try {
                 const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
                 const data = await res.json();
-                renderCards(data);
+                renderCards(data, query);
             } catch(e) { 
                 console.error("Search Error", e);
                 resultsList.innerHTML = '<div style="text-align:center; color: #ff6b6b;">[ SEARCH ERROR - TRY AGAIN ]</div>';
@@ -543,7 +543,21 @@
             }
         }
 
-        function renderCards(data) {
+        
+        function escapeRegExp(string) {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        function highlightMatch(html, query) {
+            if (!query) return html;
+            const regex = new RegExp(`(${escapeRegExp(query)})`, 'gi');
+            return html.split(/(<[^>]*>)/).map(part => {
+                if (part.startsWith('<')) return part;
+                return part.replace(regex, '<mark style="background-color: var(--text-accent); color: #000; padding: 0 2px; border-radius: 2px;">$1</mark>');
+            }).join('');
+        }
+
+        function renderCards(data, query="") {
             // Use DocumentFragment for better performance
             const fragment = document.createDocumentFragment();
             
@@ -559,14 +573,14 @@
                 
                 let categoryHtml = '';
                 if(item.category) {
-                    categoryHtml = `<span class="card-category">${escapeHtml(item.category)}</span>`;
+                    categoryHtml = `<span class="card-category">${highlightMatch(escapeHtml(item.category), query)}</span>`;
                 }
                 
                 div.innerHTML = `
                     <div class="card-header">
                         <div>
                             <div class="card-date">${escapeHtml(item.date_text || '')}</div>
-                            <div class="card-title">${escapeHtml(item.title || '')}</div>\n                        <div class="card-desc" style="font-size:0.85rem; color:var(--text-graffiti); margin-top:8px; border-top:1px dashed rgba(140,140,115,0.2); padding-top:8px; line-height: 1.4;">${escapeHtml(item.desc || "Click to view full official notification document.")}</div>
+                            <div class="card-title">${escapeHtml(item.title || '')}</div>\n                        <div class="card-desc" style="font-size:0.85rem; color:var(--text-graffiti); margin-top:8px; border-top:1px dashed rgba(140,140,115,0.2); padding-top:8px; line-height: 1.4;">${highlightMatch(escapeHtml(item.desc || "Click to view full official notification document."), query)}</div>
                         </div>
                         ${categoryHtml}
                     </div>
