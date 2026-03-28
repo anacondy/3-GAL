@@ -515,12 +515,13 @@ def generate_full_static_html(announcements):
     </div>
 
     <script>
-                // Store all cards for search
+        // Store all cards for search
         const allCards = document.querySelectorAll('.exam-card');
         const cardsData = Array.from(allCards).map(card => {{
             return {{
                 element: card,
-                originalHTML: card.innerHTML,
+                // store original text node content but we can just use the DOM structure directly safely
+                originalHTML: card.querySelector('.card-header').innerHTML,
                 textContent: card.textContent.toLowerCase()
             }};
         }});
@@ -543,35 +544,43 @@ def generate_full_static_html(announcements):
             const query = e.target.value.trim();
             const queryLower = query.toLowerCase();
             
-            const resultsContainer = document.querySelector('.results-container');
+            const resultsContainer = document.getElementById('results-list');
             const matches = [];
             const nonMatches = [];
 
             cardsData.forEach(data => {{
+                const header = data.element.querySelector('.card-header');
                 if (query === '') {{
                     data.element.style.display = 'block';
-                    data.element.innerHTML = data.originalHTML;
+                    header.innerHTML = data.originalHTML;
                     matches.push(data.element);
                 }} else {{
                     if (data.textContent.includes(queryLower)) {{
                         data.element.style.display = 'block';
-                        data.element.innerHTML = highlightMatch(data.originalHTML, query);
+                        header.innerHTML = highlightMatch(data.originalHTML, query);
                         matches.push(data.element);
                     }} else {{
                         data.element.style.display = 'none';
-                        data.element.innerHTML = data.originalHTML;
+                        header.innerHTML = data.originalHTML;
                         nonMatches.push(data.element);
                     }}
                 }}
             }});
 
-            if(query !== '') {{
-                // simple append brings matches to the top inherently, but sorting by relevance could be added:
+            if (query !== '') {{
                 matches.forEach(m => resultsContainer.appendChild(m));
                 nonMatches.forEach(m => resultsContainer.appendChild(m));
             }} else {{
                 matches.sort((a,b) => Array.from(allCards).indexOf(a) - Array.from(allCards).indexOf(b));
                 matches.forEach(m => resultsContainer.appendChild(m));
+            }}
+        }});
+
+        // Keyboard Shortcut for Search (Ctrl+K or /)
+        document.addEventListener('keydown', (e) => {{
+            if ((e.ctrlKey && e.key === 'k') || (e.key === '/' && document.activeElement !== document.getElementById('search-input'))) {{
+                e.preventDefault();
+                document.getElementById('search-input').focus();
             }}
         }});
         }});

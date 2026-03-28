@@ -544,20 +544,20 @@
         }
 
         
-          function escapeRegExp(string) {
-              return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          }
+        function escapeRegExp(string) {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
 
-          function highlightMatch(html, query) {
-              if (!query) return html;
-              const regex = new RegExp(`(${escapeRegExp(query)})`, 'gi');
-              return html.split(/(<[^>]*>)/).map(part => {
-                  if (part.startsWith('<')) return part;
-                  return part.replace(regex, '<mark style="background-color: var(--text-accent); color: #000; padding: 0 2px; border-radius: 2px;">$1</mark>');
-              }).join('');
-          }
+        function highlightMatch(html, query) {
+            if (!query) return html;
+            const regex = new RegExp(`(${escapeRegExp(query)})`, 'gi');
+            return html.split(/(<[^>]*>)/).map(part => {
+                if (part.startsWith('<')) return part;
+                return part.replace(regex, '<mark style="background-color: var(--text-accent); color: #000; padding: 0 2px; border-radius: 2px;">$1</mark>');
+            }).join('');
+        }
 
-          function renderCards(data, query="") {
+        function renderCards(data, query="") {
             // Use DocumentFragment for better performance
             const fragment = document.createDocumentFragment();
             
@@ -579,12 +579,12 @@
                 div.innerHTML = `
                     <div class="card-header">
                         <div>
-                            <div class="card-date">${highlightMatch(escapeHtml(item.date_text || ''), query)}</div>
-                            <div class="card-title">${highlightMatch(escapeHtml(item.title || ''), query)}</div>\n                        <div class="card-desc" style="font-size:0.85rem; color:var(--text-graffiti); margin-top:8px; border-top:1px dashed rgba(140,140,115,0.2); padding-top:8px; line-height: 1.4;">${highlightMatch(escapeHtml(item.desc || "Click to view full official notification document."), query)}</div>
+                            <div class="card-date">${escapeHtml(item.date_text || '')}</div>
+                            <div class="card-title">${escapeHtml(item.title || '')}</div>\n                        <div class="card-desc" style="font-size:0.85rem; color:var(--text-graffiti); margin-top:8px; border-top:1px dashed rgba(140,140,115,0.2); padding-top:8px; line-height: 1.4;">${highlightMatch(escapeHtml(item.desc || "Click to view full official notification document."), query)}</div>
                         </div>
                         ${categoryHtml}
                     </div>
-                    <button class="intel-btn" onclick="event.stopPropagation(); analyzeCard('${highlightMatch(escapeHtml(item.url), query)}', this)">INTEL</button>
+                    <button class="intel-btn" onclick="event.stopPropagation(); analyzeCard('${escapeHtml(item.url)}', this)">INTEL</button>
                 `;
                 fragment.appendChild(div);
             });
@@ -750,7 +750,7 @@
             let html = '';
             
             if(data.category) {
-                html += `<div class="info-row"><span class="info-label">Document Type</span>${highlightMatch(escapeHtml(data.category), query)}</div>`;
+                html += `<div class="info-row"><span class="info-label">Document Type</span>${escapeHtml(data.category)}</div>`;
             }
             
             if(data.language_detected && data.language_detected !== 'en') {
@@ -759,21 +759,21 @@
             
             if(data.key_info) {
                 if(data.key_info.paper_codes && data.key_info.paper_codes.length > 0) {
-                    html += `<div class="info-row"><span class="info-label">Paper Codes</span>${highlightMatch(escapeHtml(data.key_info.paper_codes.join(', ')), query)}</div>`;
+                    html += `<div class="info-row"><span class="info-label">Paper Codes</span>${escapeHtml(data.key_info.paper_codes.join(', '))}</div>`;
                 }
                 if(data.key_info.dates && data.key_info.dates.length > 0) {
-                    html += `<div class="info-row"><span class="info-label">Important Dates</span>${highlightMatch(escapeHtml(data.key_info.dates.join(', ')), query)}</div>`;
+                    html += `<div class="info-row"><span class="info-label">Important Dates</span>${escapeHtml(data.key_info.dates.join(', '))}</div>`;
                 }
                 if(data.key_info.times && data.key_info.times.length > 0) {
-                    html += `<div class="info-row"><span class="info-label">Times</span>${highlightMatch(escapeHtml(data.key_info.times.join(', ')), query)}</div>`;
+                    html += `<div class="info-row"><span class="info-label">Times</span>${escapeHtml(data.key_info.times.join(', '))}</div>`;
                 }
                 if(data.key_info.subjects && data.key_info.subjects.length > 0) {
-                    html += `<div class="info-row"><span class="info-label">Subjects</span>${highlightMatch(escapeHtml(data.key_info.subjects.join(', ')), query)}</div>`;
+                    html += `<div class="info-row"><span class="info-label">Subjects</span>${escapeHtml(data.key_info.subjects.join(', '))}</div>`;
                 }
             }
             
             if(data.summary) {
-                html += `<div class="info-row"><span class="info-label">Summary</span>${highlightMatch(escapeHtml(data.summary), query)}</div>`;
+                html += `<div class="info-row"><span class="info-label">Summary</span>${escapeHtml(data.summary)}</div>`;
             }
             
             if(data.cached) {
