@@ -515,16 +515,65 @@ def generate_full_static_html(announcements):
     </div>
 
     <script>
-        // Store all cards for search
+                // Store all cards for search
         const allCards = document.querySelectorAll('.exam-card');
-        
+        const cardsData = Array.from(allCards).map(card => {{
+            return {{
+                element: card,
+                originalHTML: card.innerHTML,
+                textContent: card.textContent.toLowerCase()
+            }};
+        }});
+
+        function escapeRegExp(string) {{
+            return string.replace(/[.*+?^${{}}()|[\]\\]/g, '\\$&');
+        }}
+
+        function highlightMatch(html, query) {{
+            if (!query) return html;
+            const regex = new RegExp(`(${{escapeRegExp(query)}})`, 'gi');
+            return html.split(/(<[^>]*>)/).map(part => {{
+                if (part.startsWith('<')) return part;
+                return part.replace(regex, '<mark style="background-color: var(--text-accent); color: #000; padding: 0 2px; border-radius: 2px;">$1</mark>');
+            }}).join('');
+        }}
+
         // Search functionality
         document.getElementById('search-input').addEventListener('input', function(e) {{
-            const query = e.target.value.toLowerCase();
-            allCards.forEach(card => {{
-                const text = card.textContent.toLowerCase();
-                card.style.display = text.includes(query) ? 'block' : 'none';
+            const query = e.target.value.trim();
+            const queryLower = query.toLowerCase();
+            
+            const resultsContainer = document.querySelector('.results-container');
+            const matches = [];
+            const nonMatches = [];
+
+            cardsData.forEach(data => {{
+                if (query === '') {{
+                    data.element.style.display = 'block';
+                    data.element.innerHTML = data.originalHTML;
+                    matches.push(data.element);
+                }} else {{
+                    if (data.textContent.includes(queryLower)) {{
+                        data.element.style.display = 'block';
+                        data.element.innerHTML = highlightMatch(data.originalHTML, query);
+                        matches.push(data.element);
+                    }} else {{
+                        data.element.style.display = 'none';
+                        data.element.innerHTML = data.originalHTML;
+                        nonMatches.push(data.element);
+                    }}
+                }}
             }});
+
+            if(query !== '') {{
+                // simple append brings matches to the top inherently, but sorting by relevance could be added:
+                matches.forEach(m => resultsContainer.appendChild(m));
+                nonMatches.forEach(m => resultsContainer.appendChild(m));
+            }} else {{
+                matches.sort((a,b) => Array.from(allCards).indexOf(a) - Array.from(allCards).indexOf(b));
+                matches.forEach(m => resultsContainer.appendChild(m));
+            }}
+        }});
         }});
 
         // PDF Viewer - Uses Google Docs Viewer for cross-device compatibility
