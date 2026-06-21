@@ -432,6 +432,7 @@
     <div id="pdf-modal">
         <div class="modal-controls">
             <button class="close-btn" onclick="closePdf()">[ CLOSE FILE ]</button>
+        <a id="open-original-btn" class="close-btn" href="#" target="_blank" rel="noopener noreferrer" style="text-decoration:none; display:inline-block; margin-left:8px;">[ OPEN ORIGINAL ? ]</a>
             <button class="summary-btn" onclick="showPdfSummary()" id="modal-summary-btn">[ AI SUMMARY ]</button>
         </div>
         <div class="pdf-loading" id="pdf-loading">Loading PDF</div>
@@ -595,7 +596,7 @@
             btn.innerText = "[ FETCHING LIVE DATA... ]";
             btn.disabled = true;
             try {
-                const res = await fetch('/api/sync', { method: 'POST' });
+                const res = await fetch('/api/sync', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
                 const data = await res.json();
                 btn.innerText = `[ SYNC COMPLETE: ${data.count || 0} ITEMS ]`;
                 
@@ -634,7 +635,7 @@
             // Fast loading logic utilizing native browser engines
             const isMobileBrowser = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
             // Use native viewer for PC (drastically faster), fallback to Google Docs for mobile Compatibility
-            const finalUrl = isMobileBrowser ? 'https://docs.google.com/viewer?url=' + encodeURIComponent(url) + '&embedded=true' : url;
+            const finalUrl = 'https://docs.google.com/viewer?url=' + encodeURIComponent(url) + '&embedded=true';
         
             pdfFrame.src = finalUrl;
             
@@ -643,6 +644,9 @@
                 pdfLoading.classList.remove('active');
             };
             
+            document.getElementById('open-original-btn').href = url;
+            document.getElementById('open-original-btn').href = url;
+            document.getElementById('open-original-btn').href = url;
             document.getElementById('pdf-modal').style.display = 'flex';
             document.body.style.overflow = 'hidden';
         }
@@ -663,16 +667,12 @@
             btn.innerText = 'ANALYZING';
             
             try {
-                const res = await fetch('/api/analyze', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url })
-                });
+                const res = await fetch('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: JSON.stringify({ url }) });
                 
                 const data = await res.json();
                 
                 if(data.error) {
-                    alert('Analysis failed: ' + data.error);
+                    document.getElementById('pdf-loading').textContent = '?? AI summary unavailable: ' + data.error;
                     return;
                 }
                 
@@ -703,7 +703,7 @@
                 const data = await res.json();
                 
                 if(data.error) {
-                    alert('Analysis failed: ' + data.error);
+                    document.getElementById('pdf-loading').textContent = '?? AI summary unavailable: ' + data.error;
                     return;
                 }
                 

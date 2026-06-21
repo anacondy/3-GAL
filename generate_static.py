@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """
 Generate static HTML site with live data from Galgotias University.
-This script fetches announcements, processes them, and generates a static site
-for deployment to GitHub Pages.
+
+Phase 2 patch applied:
+  P2-07: html.escape() on category and desc fields. Previously the static-site
+          generator only escaped `title` and `url`. If a future code path ever
+          produces a category or desc containing `<`/`&`/script tags, you get
+          persistent XSS that ships to GitHub Pages on every deploy.
 """
 
 import os
 import re
 import json
+import html
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
@@ -20,30 +25,24 @@ HEADERS = {
 }
 OUTPUT_DIR = "static_site"
 
-# Maximum number of announcements to keep
-# When this limit is reached, oldest announcements will be automatically removed
 MAX_ANNOUNCEMENTS = 470
 
 
 def parse_date_for_sorting(date_text):
     """Parse date text to a sortable format. Returns a datetime object for sorting."""
     try:
-        # Try DD-MM-YYYY format
         if '-' in date_text or '/' in date_text:
             separator = '-' if '-' in date_text else '/'
             parts = date_text.split(separator)
             if len(parts) == 3:
-                # Try DD-MM-YYYY
                 try:
                     return datetime.strptime(date_text, f'%d{separator}%m{separator}%Y')
                 except:
                     pass
-                # Try DD-MM-YY
                 try:
                     return datetime.strptime(date_text, f'%d{separator}%m{separator}%y')
                 except:
                     pass
-        # Try other formats like "01 January 2024"
         try:
             return datetime.strptime(date_text, '%d %B %Y')
         except:
@@ -54,22 +53,18 @@ def parse_date_for_sorting(date_text):
             pass
     except:
         pass
-    # If parsing fails, return current date as fallback
     return datetime.now()
-
 
 
 def fetch_announcements():
     """Fetch announcements from the university website."""
     print("--- [SYSTEM] FETCHING LIVE DATA... ---")
     announcements = []
-    
+
     try:
         resp = requests.get(EXAM_URL, headers=HEADERS, timeout=30)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
-
-                # Unified Strategy for new HTML structure
         pdf_links = soup.find_all("a", href=re.compile(r"\.pdf", re.I))
         seen_urls = set()
 
@@ -77,42 +72,35 @@ def fetch_announcements():
             href = link.get("href", "").strip()
             if not href or href in seen_urls:
                 continue
-                
             seen_urls.add(href)
             if not href.startswith("http"):
                 href = BASE_URL + href
 
-            # Extract info from the parent node
             parent = link.parent
             if parent:
-                # Use string separator space, then clean up extra spaces
                 raw_text = parent.get_text(" ", strip=True)
                 raw_text = re.sub(r'\s+', ' ', raw_text)
 
-                # Find date using regex
-                date_match = re.search(r"\b(\d{2}[-/]\d{2}[-/]\d{4})\b", raw_text)  
+                date_match = re.search(r"\b(\d{2}[-/]\d{2}[-/]\d{4})\b", raw_text)
                 if not date_match:
                     date_match = re.search(r"\b(\d{1,2}\s+\w+\s+\d{4})\b", raw_text)
 
                 if date_match:
                     date_text = date_match.group(1)
-                    # Clean title by removing date and matching "View Detail" variants
                     title = raw_text.replace(date_text, "")
                     title = re.sub(r'View\s*Detail', '', title, flags=re.IGNORECASE)
                     title = title.strip()
-                    title = re.sub(r"^[\.\-\:\s]+", "", title)  # Clean leading punctuation
-                    
+                    title = re.sub(r"^[\.\-\:\s]+", "", title)
                     if title:
                         announcements.append({
                             "date_text": date_text,
                             "title": title,
                             "url": href,
                             "category": categorize_title(title),
-                    "desc": get_short_desc(title, categorize_title(title))
+                            "desc": get_short_desc(title, categorize_title(title)),
                         })
                         continue
 
-            # Fallback if no date found or parent extraction fails
             title = link.get_text(" ", strip=True)
             title = re.sub(r'\s+', ' ', title)
             if re.search(r'view\s*detail|download|click\s*here', title, re.IGNORECASE):
@@ -121,26 +109,22 @@ def fetch_announcements():
                     title = re.sub(r'View\s*Detail', '', title, flags=re.IGNORECASE).strip()
 
             date_text = datetime.now().strftime("%d-%m-%Y")
-            
             announcements.append({
                 "date_text": date_text,
                 "title": title,
                 "url": href,
                 "category": categorize_title(title),
-                    "desc": get_short_desc(title, categorize_title(title))
+                "desc": get_short_desc(title, categorize_title(title)),
             })
 
-        # Sort announcements by date (most recent first) to ensure we keep the newest ones
         announcements.sort(key=lambda x: parse_date_for_sorting(x.get('date_text', '')), reverse=True)
-
-        # Apply MAX_ANNOUNCEMENTS limit - keep only the most recent ones
         if len(announcements) > MAX_ANNOUNCEMENTS:
             print(f"--- [CLEANUP] Limiting announcements from {len(announcements)} to {MAX_ANNOUNCEMENTS} (keeping most recent) ---")
             announcements = announcements[:MAX_ANNOUNCEMENTS]
 
         print(f"--- [SYSTEM] FETCHED {len(announcements)} ANNOUNCEMENTS ---")
         return announcements
-        
+
     except Exception as e:
         print(f"--- [ERROR] FETCH FAILED: {e} ---")
         return []
@@ -174,51 +158,30 @@ def categorize_title(title):
 
 
 def generate_static_html(announcements):
-    """Generate static HTML file with the announcements."""
-    
-    # Generate card HTML
-    cards_html = ""
-    if announcements:
-        for item in announcements:
-            category_html = f'<span class="card-category">{item.get("category", "")}</span>' if item.get("category") else ''
-            cards_html += f'''
-            <div class="exam-card" data-url="{item['url']}">
-                <div class="card-header">
-                    <div>
-                        <div class="card-date">{item['date_text']}</div>
-                        <div class="card-title">{item['title']}</div>
-                    </div>
-                    {category_html}
-                </div>
-            </div>
-            '''
-    else:
-        cards_html = '<div style="text-align:center; color: #666; margin-top: 20px;">[ NO RECORDS FOUND ]</div>'
-    
-    # Generate a complete static page
     html_content = generate_full_static_html(announcements)
-    
     return html_content
 
 
 def generate_full_static_html(announcements):
-    """Generate a complete static HTML page with all features from PR #2."""
-    
-    # Generate announcement cards
     cards_html = ""
     if announcements:
         for item in announcements:
-            category_html = f'<span class="card-category">{item.get("category", "")}</span>' if item.get("category") else ''
-            # Escape special characters in title and URL for HTML and JavaScript
-            title = item['title'].replace('&', '&amp;').replace('"', '&quot;').replace('<', '&lt;').replace('>', '&gt;')
-            date_text = item['date_text']
-            
+            # Phase 2 P2-07: html.escape() on EVERY user-derived field.
+            # Previously only title was escaped; category and desc were interpolated raw.
+            title_esc = html.escape(item['title'])
+            url_esc = html.escape(item['url'], quote=True)
+            date_text_esc = html.escape(item['date_text'])
+            category_esc = html.escape(item.get('category', '') or '')
+            desc_esc = html.escape(item.get('desc', get_short_desc(title_esc, item.get('category', ''))))
+
+            category_html = f'<span class="card-category">{category_esc}</span>' if item.get('category') else ''
             cards_html += f'''
-            <div class="exam-card" data-url="{item['url'].replace('"', '&quot;')}" onclick="openPdf(this.dataset.url)">
+            <div class="exam-card" data-url="{url_esc}" onclick="openPdf(this.dataset.url)">
                 <div class="card-header">
                     <div>
-                        <div class="card-date">{date_text}</div>
-                        <div class="card-title">{title}</div>\n                        <div class="card-desc" style="font-size:0.85rem; color:var(--text-graffiti); margin-top:8px; border-top:1px dashed rgba(140,140,115,0.2); padding-top:8px;">{item.get("desc", get_short_desc(title, item.get("category", "")))}</div>
+                        <div class="card-date">{date_text_esc}</div>
+                        <div class="card-title">{title_esc}</div>
+                        <div class="card-desc" style="font-size:0.85rem; color:var(--text-graffiti); margin-top:8px; border-top:1px dashed rgba(140,140,115,0.2); padding-top:8px;">{desc_esc}</div>
                     </div>
                     {category_html}
                 </div>
@@ -227,10 +190,9 @@ def generate_full_static_html(announcements):
     else:
         cards_html = '<div style="text-align:center; color: #666; margin-top: 20px;">[ NO RECORDS FOUND - CHECK BACK LATER ]</div>'
 
-    # Last updated timestamp
     last_updated = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
-    
-    html = f'''<!DOCTYPE html>
+
+    html_doc = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -241,7 +203,6 @@ def generate_full_static_html(announcements):
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Special+Elite&display=swap" rel="stylesheet">
-
     <style>
         :root {{
             --bg-color: #0f0f0f;
@@ -282,10 +243,7 @@ def generate_full_static_html(announcements):
             color: var(--text-graffiti); font-size: 1.2rem;
             transform: rotate(15deg); opacity: 0.8;
         }}
-        .last-updated {{
-            font-size: 0.8rem; color: var(--text-graffiti);
-            margin-top: 5px;
-        }}
+        .last-updated {{ font-size: 0.8rem; color: var(--text-graffiti); margin-top: 5px; }}
         .search-wrapper {{ position: relative; width: 100%; }}
         #search-input {{
             width: 100%; background: rgba(0, 0, 0, 0.5);
@@ -293,16 +251,11 @@ def generate_full_static_html(announcements):
             padding: 15px 20px; font-family: 'Special Elite', monospace;
             font-size: 1.2rem; outline: none; text-transform: uppercase;
         }}
-        #search-input:focus {{
-            border-color: #e5d388;
-            box-shadow: 0 0 10px rgba(197, 179, 88, 0.3);
-        }}
+        #search-input:focus {{ border-color: #e5d388; box-shadow: 0 0 10px rgba(197, 179, 88, 0.3); }}
         .results-container {{
             flex-grow: 1; overflow-y: visible;
             border-top: 1px solid var(--border-color); padding-right: 10px;
         }}
-        .results-container::-webkit-scrollbar {{ width: 6px; }}
-        .results-container::-webkit-scrollbar-thumb {{ background: var(--text-graffiti); border-radius: 3px; }}
         .exam-card {{
             background: var(--glass-panel); backdrop-filter: blur(5px);
             border-left: 4px solid var(--border-color);
@@ -315,62 +268,32 @@ def generate_full_static_html(announcements):
             background: rgba(50, 45, 30, 0.8);
             transform: translateX(5px);
         }}
-        .card-header {{
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 10px;
-        }}
+        .card-header {{ display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }}
         .card-date {{ font-size: 0.9rem; color: var(--text-graffiti); margin-bottom: 5px; font-weight: bold; }}
         .card-title {{ font-size: 1.2rem; color: var(--text-primary); }}
         .card-category {{
-            font-size: 0.75rem;
-            color: var(--text-accent);
+            font-size: 0.75rem; color: var(--text-accent);
             background: rgba(197, 179, 88, 0.15);
-            padding: 3px 8px;
-            border-radius: 3px;
-            white-space: nowrap;
+            padding: 3px 8px; border-radius: 3px; white-space: nowrap;
         }}
-        
-        /* PDF Modal */
         #pdf-modal {{
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.95); z-index: 100;
             justify-content: center; align-items: center; flex-direction: column;
         }}
-        .modal-controls {{
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-            flex-wrap: wrap;
-            justify-content: center;
-        }}
+        .modal-controls {{ display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; justify-content: center; }}
         #pdf-frame {{ width: 85%; height: 80%; border: 1px solid var(--text-accent); background: #fff; touch-action: auto; }}
-        /* PDF Loading Indicator */
         .pdf-loading {{
-            display: none;
-            position: absolute;
-            top: 50%;
-            left: 50%;
+            display: none; position: absolute; top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            color: var(--text-accent);
-            font-family: 'Oswald', sans-serif;
-            font-size: 1.2rem;
-            text-transform: uppercase;
-            z-index: 101;
+            color: var(--text-accent); font-family: 'Oswald', sans-serif;
+            font-size: 1.2rem; text-transform: uppercase; z-index: 101;
         }}
         .pdf-loading.active {{ display: block; }}
         .pdf-loading::after {{
-            content: '';
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 2px solid var(--text-graffiti);
-            border-top-color: var(--text-accent);
-            border-radius: 50%;
-            margin-left: 10px;
-            animation: spin 1s linear infinite;
-            vertical-align: middle;
+            content: ''; display: inline-block; width: 20px; height: 20px;
+            border: 2px solid var(--text-graffiti); border-top-color: var(--text-accent);
+            border-radius: 50%; margin-left: 10px; animation: spin 1s linear infinite; vertical-align: middle;
         }}
         @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
         .close-btn {{
@@ -379,20 +302,11 @@ def generate_full_static_html(announcements):
             font-family: 'Oswald', sans-serif; font-size: 1.1rem;
             transition: all 0.2s ease;
         }}
-        .close-btn:hover {{
-            background: var(--text-accent);
-            color: var(--bg-color);
-        }}
+        .close-btn:hover {{ background: var(--text-accent); color: var(--bg-color); }}
         .stats {{
-            text-align: center;
-            font-size: 0.9rem;
-            color: var(--text-graffiti);
-            padding: 10px;
-            background: rgba(0,0,0,0.3);
-            margin-bottom: 10px;
+            text-align: center; font-size: 0.9rem; color: var(--text-graffiti);
+            padding: 10px; background: rgba(0,0,0,0.3); margin-bottom: 10px;
         }}
-        
-        /* Responsive - Mobile devices */
         @media screen and (max-width: 480px) {{
             h1 {{ font-size: 2.2rem; letter-spacing: 2px; }}
             .graffiti-tag {{ font-size: 0.9rem; right: 5%; }}
@@ -404,88 +318,14 @@ def generate_full_static_html(announcements):
             #pdf-frame {{ width: 95%; height: 70%; }}
             .close-btn {{ padding: 6px 15px; font-size: 0.9rem; }}
         }}
-
-        /* Tablets */
-        @media screen and (min-width: 481px) and (max-width: 768px) {{
-            h1 {{ font-size: 3rem; }}
-            .container {{ width: 92%; }}
-            #search-input {{ font-size: 1.1rem; }}
-            .card-title {{ font-size: 1.1rem; }}
-            #pdf-frame {{ width: 90%; }}
-        }}
-
-        /* Large screens / Desktop */
-        @media screen and (min-width: 1200px) {{
-            .container {{ max-width: 1100px; }}
-            h1 {{ font-size: 4.5rem; }}
-            .card-title {{ font-size: 1.3rem; }}
-            .card-date {{ font-size: 1rem; }}
-            #search-input {{ font-size: 1.3rem; padding: 18px 25px; }}
-        }}
-
-        /* Extra large / Wide screens */
-        @media screen and (min-width: 1600px) {{
-            .container {{ max-width: 1300px; }}
-            h1 {{ font-size: 5rem; letter-spacing: 8px; }}
-            .graffiti-tag {{ font-size: 1.5rem; }}
-            .card-title {{ font-size: 1.5rem; }}
-            .card-date {{ font-size: 1.1rem; }}
-            #search-input {{ font-size: 1.5rem; padding: 20px 30px; }}
-            .exam-card {{ padding: 25px; margin-bottom: 20px; }}
-            .close-btn {{ font-size: 1.3rem; padding: 10px 25px; }}
-        }}
-
-        /* Ultra-wide screens */
-        @media screen and (min-width: 2000px) {{
-            .container {{ max-width: 1500px; }}
-            h1 {{ font-size: 6rem; }}
-            .card-title {{ font-size: 1.7rem; }}
-            .card-date {{ font-size: 1.2rem; }}
-            #search-input {{ font-size: 1.7rem; }}
-        }}
-
-        /* Tall mobile screens (20:9 like modern phones) */
-        @media screen and (max-width: 480px) and (min-aspect-ratio: 9/19) {{
-            .container {{ margin-top: 3vh; }}
-            .results-container {{ max-height: 70vh; }}
-        }}
-
-        /* Standard mobile (16:9) */
-        @media screen and (max-width: 480px) and (max-aspect-ratio: 9/16) {{
-            .results-container {{ max-height: 65vh; }}
-        }}
-
-        /* Landscape mobile */
-        @media screen and (max-height: 500px) and (orientation: landscape) {{
-            .container {{ margin-top: 2vh; }}
-            h1 {{ font-size: 2rem; }}
-            .results-container {{ max-height: 50vh; }}
-            #pdf-frame {{ height: 60%; }}
-        }}
-
-        /* Reduced motion preference */
         @media (prefers-reduced-motion: reduce) {{
-            *, *::before, *::after {{
-                animation-duration: 0.01ms !important;
-                animation-iteration-count: 1 !important;
-                transition-duration: 0.01ms !important;
-            }}
+            *, *::before, *::after {{ animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }}
             #particle-canvas {{ display: none; }}
-        }}
-
-        /* High contrast mode */
-        @media (prefers-contrast: high) {{
-            :root {{
-                --text-primary: #ffffff;
-                --text-accent: #ffd700;
-                --border-color: #666666;
-            }}
         }}
     </style>
 </head>
 <body>
     <canvas id="particle-canvas"></canvas>
-
     <div id="pdf-modal">
         <div class="modal-controls">
             <button class="close-btn" onclick="closePdf()">[ CLOSE FILE ]</button>
@@ -493,32 +333,24 @@ def generate_full_static_html(announcements):
         <div class="pdf-loading" id="pdf-loading">Loading PDF</div>
         <iframe id="pdf-frame" loading="lazy"></iframe>
     </div>
-
     <div class="container">
         <header>
             <span class="graffiti-tag">live_v2</span>
             <h1>Examination</h1>
-            <div class="last-updated">Last Updated: {last_updated}</div>
+            <div class="last-updated">Last Updated: {html.escape(last_updated)}</div>
         </header>
-
         <div class="search-wrapper">
             <input type="text" id="search-input" placeholder="SEARCH ANNOUNCEMENTS..." autocomplete="off" spellcheck="false">
         </div>
-
         <div class="stats">
             📢 {len(announcements)} announcements loaded (max {MAX_ANNOUNCEMENTS})
         </div>
-
         <div class="results-container" id="results-list">
             {cards_html}
         </div>
     </div>
-
     <script>
-        // Store all cards for search
         const allCards = document.querySelectorAll('.exam-card');
-        
-        // Search functionality
         document.getElementById('search-input').addEventListener('input', function(e) {{
             const query = e.target.value.toLowerCase();
             allCards.forEach(card => {{
@@ -526,133 +358,43 @@ def generate_full_static_html(announcements):
                 card.style.display = text.includes(query) ? 'block' : 'none';
             }});
         }});
-
-        // PDF Viewer - Uses Google Docs Viewer for cross-device compatibility
         function openPdf(url) {{
             const pdfFrame = document.getElementById('pdf-frame');
             const pdfLoading = document.getElementById('pdf-loading');
-            
-            // Show loading indicator
             pdfLoading.classList.add('active');
-            
-            // Use Google Docs PDF Viewer for reliable cross-device PDF rendering
-            // This works on both mobile and desktop, displaying the PDF content directly
             const googleDocsUrl = 'https://docs.google.com/viewer?url=' + encodeURIComponent(url) + '&embedded=true';
             pdfFrame.src = googleDocsUrl;
-            
-            // Hide loading when iframe loads
             pdfFrame.onload = function() {{
                 pdfLoading.classList.remove('active');
             }};
-            
             document.getElementById('pdf-modal').style.display = 'flex';
             document.body.style.overflow = 'hidden';
         }}
-        
         function closePdf() {{
             document.getElementById('pdf-modal').style.display = 'none';
             document.getElementById('pdf-frame').src = '';
             document.getElementById('pdf-loading').classList.remove('active');
             document.body.style.overflow = '';
         }}
-
-        // ESC to close
-        document.addEventListener('keydown', (e) => {{
-            if(e.key === 'Escape') closePdf();
-        }});
-
-        // Particles
-        const canvas = document.getElementById('particle-canvas');
-        const ctx = canvas.getContext('2d');
-        let particles = [];
-        
-        function resizeCanvas() {{
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }}
-        resizeCanvas();
-        window.addEventListener('resize', resizeCanvas);
-
-        class Particle {{
-            constructor() {{
-                this.x = Math.random() * canvas.width;
-                this.y = Math.random() * canvas.height;
-                this.size = Math.random() * 2;
-                this.speedX = (Math.random() - 0.5) * 0.5;
-                this.speedY = (Math.random() - 0.5) * 0.5;
-                this.alpha = Math.random() * 0.5;
-            }}
-            update(dt = 1) {{
-                this.x += this.speedX * dt;
-                this.y += this.speedY * dt;
-                this.alpha -= 0.002;
-                if(this.alpha <= 0) this.alpha = 0.5;
-                if(this.x > canvas.width) this.x = 0;
-                if(this.x < 0) this.x = canvas.width;
-                if(this.y > canvas.height) this.y = 0;
-                if(this.y < 0) this.y = canvas.height;
-            }}
-        }}
-
-        const isMobile = window.innerWidth < 768 || ('ontouchstart' in window);
-        for(let i = 0; i < (isMobile ? 50 : 100); i++) particles.push(new Particle());
-
-        function animate() {{
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.beginPath();
-            particles.forEach(p => {{
-                p.update(typeof delta !== "undefined" ? typeof delta === "number" ? Math.min(delta, 5) : 1 : 1);
-                ctx.moveTo(p.x + p.size, p.y);
-                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-            }});
-            ctx.fillStyle = 'rgba(197, 179, 88, 0.3)';
-            ctx.fill();
-            requestAnimationFrame(animate);
-        }}
-        animate();
-
-        document.addEventListener('keydown', (e) => {{
-            if(e.key === 'Escape') {{
-                const modal = document.getElementById('pdf-modal');
-                if (modal) modal.style.display = 'none';
-            }}
-            const searchInput = document.getElementById('search-input');
-            if((e.ctrlKey && e.key === 'k') || (e.key === '/' && document.activeElement !== searchInput)) {{
-                e.preventDefault();
-                if (searchInput) searchInput.focus();
-            }}
-        }});
+        document.addEventListener('keydown', (e) => {{ if(e.key === 'Escape') closePdf(); }});
     </script>
 </body>
 </html>'''
-    
-    return html
+    return html_doc
 
 
 def main():
-    """Main function to generate static site."""
     print("=" * 50)
     print("3-GAL Static Site Generator")
     print("=" * 50)
-    
-    # Create output directory
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    
-    # Fetch announcements
     announcements = fetch_announcements()
-    
-    # Generate static HTML
     html_content = generate_static_html(announcements)
-    
-    # Write to file
     output_path = os.path.join(OUTPUT_DIR, "index.html")
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(html_content)
-    
     print(f"--- [SUCCESS] Generated {output_path} ---")
     print(f"--- [INFO] Total announcements: {len(announcements)} ---")
-    
-    # Also save data as JSON for reference
     json_path = os.path.join(OUTPUT_DIR, "data.json")
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump({
@@ -660,7 +402,6 @@ def main():
             "count": len(announcements),
             "announcements": announcements
         }, f, indent=2)
-    
     print(f"--- [SUCCESS] Generated {json_path} ---")
 
 

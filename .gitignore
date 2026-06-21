@@ -77,3 +77,33 @@ test_*.db
 
 # Generated static site
 static_site/
+*.bak
+*.backup-*
+*.prev.bak
+*.final-bak
+*.phase1-final.bak
+*.phase1-bak
+*.phase2-bak
+galgotias_cache.db
+__pycache__/
+.venv/
+
+# Local DB and Python venv
+galgotias_cache.db
+__pycache__/
+.venv/
+*.pyc
+*.pyo
+
+# Backup files from patching
+*.bak
+*.backup-*
+*.prev.bak
+*.final-bak
+*.phase1-final.bak
+*.phase1-bak
+*.phase2-bak
+
+# One-off files we don't want in git
+project_bundle.txt
+phase2/

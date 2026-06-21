@@ -50,10 +50,10 @@ A dynamic, real-time web scraper for Galgotias University examination announceme
 2. **Create a virtual environment** (recommended)
    ```bash
    python -m venv venv
-   
+
    # Windows
    venv\Scripts\activate
-   
+
    # macOS/Linux
    source venv/bin/activate
    ```
@@ -102,10 +102,6 @@ Click the **INTEL** button on any announcement card to get:
 |----------|--------|
 | `Ctrl + K` or `/` | Focus search |
 | `Escape` | Close modal/summary |
-
-### Admin Access
-
-Type `upload` in the search box and enter `Alvido` for admin access.
 
 ## 🏗️ Project Structure
 
@@ -238,7 +234,7 @@ Tauri creates lightweight, secure desktop apps:
    ```bash
    # Install Rust
    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-   
+
    # Install Node.js (for Tauri CLI)
    # Download from https://nodejs.org/
    ```
@@ -270,9 +266,7 @@ pyinstaller --onefile --add-data "templates:templates" app.py
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `FLASK_DEBUG` | `True` | Enable debug mode |
 | `PORT` | `5007` | Server port |
-| `DB_FILE` | `galgotias_cache.db` | Database file path |
 
 ### Database
 
@@ -287,13 +281,13 @@ If experimental features break your site, you can revert back to the last known 
 
 ### How to manually restore to this stable version:
 If you mess up your local files or site structure, run these exact commands in your terminal:
-`ash
+```bash
 # 1. Force your local codebase back to the stable commit
 git reset --hard e1df46c
 
 # 2. Force push this restored version back to GitHub to fix the live site
 git push -f origin main
-`
+```
 
 ## 🤝 Contributing
 

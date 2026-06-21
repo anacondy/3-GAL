@@ -59,7 +59,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
-    
+
     steps:
       - uses: actions/checkout@v4
 
@@ -69,7 +69,9 @@ jobs:
           path: artifacts
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        # Phase 2 P3-08: pinned to SHA instead of @v1 to prevent
+        # supply-chain drift if the action maintainer is compromised.
+        uses: softprops/action-gh-release@dec0d2cbf5e635e9b303d6e9bfe36c1915fd0951
         with:
           files: |
             artifacts/3gal-linux/3gal-linux
@@ -77,43 +79,28 @@ jobs:
             artifacts/3gal-windows/3gal-windows.exe
           body: |
             ## 3-GAL Release
-            
+
             ### Downloads
-            
+
             | Platform | Download |
             |----------|----------|
             | Windows | `3gal-windows.exe` |
             | macOS | `3gal-macos` |
             | Linux | `3gal-linux` |
-            
+
             ### Installation
-            
+
             #### Windows
             1. Download `3gal-windows.exe`
             2. Double-click to run
             3. Open browser to `http://localhost:5007`
-            
+
             #### macOS
             1. Download `3gal-macos`
             2. Open Terminal and run: `chmod +x 3gal-macos && ./3gal-macos`
             3. Open browser to `http://localhost:5007`
-            
+
             #### Linux
             1. Download `3gal-linux`
-            2. Open Terminal and run: `chmod +x 3gal-linux && ./3gal-linux`
+            2. Run: `chmod +x 3gal-linux && ./3gal-linux`
             3. Open browser to `http://localhost:5007`
-            
-            ### Requirements
-            - No additional dependencies required
-            - The executable is self-contained
-            
-            ### Source Installation
-            For development, use:
-            ```bash
-            git clone https://github.com/anacondy/3-GAL.git
-            cd 3-GAL
-            pip install -r requirements.txt
-            python app.py
-            ```
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
