@@ -3,10 +3,7 @@ config.py — Centralized configuration for 3-GAL.
 
 Both app.py and generate_static.py import from this module so that
 constants like MAX_ANNOUNCEMENTS, ALLOWED_PDF_DOMAINS, etc. live in
-exactly one place. Previously these were duplicated (Phase 3 P3-07).
-
-Override any value at runtime via environment variable of the same
-name (e.g. `MAX_ANNOUNCEMENTS=1000 python app.py`).
+exactly one place. Override any value at runtime via environment variable.
 """
 
 import os
@@ -41,7 +38,7 @@ MAX_TEXT_TOTAL = int(os.environ.get("MAX_TEXT_TOTAL", "50000"))
 MAX_QUERY_LENGTH = int(os.environ.get("MAX_QUERY_LENGTH", "500"))
 MAX_QUERY_TOKENS = int(os.environ.get("MAX_QUERY_TOKENS", "32"))
 
-# --- SSRF allowlist (Phase 1 P1-01) ---
+# --- SSRF allowlist ---
 ALLOWED_PDF_DOMAINS = [
     "galgotiasuniversity.edu.in",
     "www.galgotiasuniversity.edu.in",
@@ -49,3 +46,8 @@ ALLOWED_PDF_DOMAINS = [
 
 # --- Server ---
 DEFAULT_PORT = int(os.environ.get("PORT", "5007"))
+
+# --- Phase 4: OCR fallback for image-only PDFs ---
+# Disabled by default. Enable with: OCR_ENABLED=1 python app.py
+# Requires `pip install pdf2image pytesseract` AND a Tesseract OCR binary on the system.
+OCR_ENABLED = os.environ.get("OCR_ENABLED", "0") in ("1", "true", "yes", "on")

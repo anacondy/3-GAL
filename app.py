@@ -30,6 +30,7 @@ from config import (
     MAX_QUERY_LENGTH, MAX_QUERY_TOKENS,
     ALLOWED_PDF_DOMAINS,
     DEFAULT_PORT,
+    OCR_ENABLED,  # Phase 4
 )
 
 # PDF and language detection imports

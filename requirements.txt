@@ -1,13 +1,5 @@
 # 3-GAL - Galgotias University Examination Announcements Scraper
 # Core Dependencies
-#
-# Phase 2 note: googletrans==4.0.0-rc1 has been REMOVED. The 4-year-old
-# pre-release uses an undocumented Google Translate web endpoint that Google
-# has been changing/banning. In practice it returns empty strings or raises
-# AttributeError on any non-trivial Hindi text. Hindi PDFs are still detected
-# by langdetect, but the English translation step is no longer attempted.
-# (If you want translation later, use the official Google Cloud Translate API
-# or a maintained alternative like deep-translator>=1.11.4.)
 
 # Web Framework
 Flask>=2.3.0
@@ -23,8 +15,20 @@ beautifulsoup4>=4.12.0
 pdfplumber>=0.10.0
 PyPDF2>=3.0.0
 
-# Language Detection (translation removed — see note above)
+# Language Detection (translation removed in Phase 2)
 langdetect>=1.0.9
 
 # Production Server
 gunicorn>=21.0.0
+
+# Phase 4: OCR fallback for image-only PDFs (OPTIONAL)
+# To enable, install Tesseract OCR binary separately:
+#   - Windows: https://github.com/UB-Mannheim/tesseract/wiki
+#   - Linux:   apt install tesseract-ocr
+#   - macOS:   brew install tesseract
+# Then set OCR_ENABLED=1 in your environment.
+pdf2image>=1.16.0
+pytesseract>=0.3.10
+
+# Phase 4: CI test suite
+pytest>=7.0.0
