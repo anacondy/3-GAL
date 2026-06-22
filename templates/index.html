@@ -35,7 +35,7 @@
             display: flex; flex-direction: column; align-items: center;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
-            touch-action: pan-x pan-y;
+            touch-action: manipulation;  /* Phase 5: was 'pan-x pan-y' which blocked vertical scroll */
         }
         /* GPU acceleration for smooth 60fps */
         .gpu-accelerate {
@@ -425,11 +425,28 @@
             }
         }
     </style>
+    <script>
+    /* Phase 5: prevent desktop zoom (Ctrl+scroll, Ctrl+Plus/Minus/Zero).
+       On mobile the meta viewport 'user-scalable=no' handles this.
+       On desktop, browser-native shortcuts need to be captured in JS. */
+    (function() {
+        document.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && ['+', '-', '0', '='].indexOf(e.key) !== -1) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+        document.addEventListener('wheel', function(e) {
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+    })();
+    </script>
 </head>
 <body>
     <canvas id="particle-canvas"></canvas>
 
-    <div id="pdf-modal">
+    <div id="pdf-modal" onclick="if(event.target===this) closePdf()">
         <div class="modal-controls">
             <button class="close-btn" onclick="closePdf()">[ CLOSE FILE ]</button>
         <a id="open-original-btn" class="close-btn" href="#" target="_blank" rel="noopener noreferrer" style="text-decoration:none; display:inline-block; margin-left:8px;">[ OPEN ORIGINAL ? ]</a>
