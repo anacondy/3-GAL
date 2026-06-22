@@ -6,9 +6,12 @@ on:
       - 'v*'
   workflow_dispatch:
 
-# Phase 3 P3-08: all third-party actions pinned to SHA, not @v1/@v4.
-# To update a pin, visit the action's GitHub releases page, copy the
-# commit SHA for the version you want, and update below.
+# SHA pinning (Phase 3) was rolled back to version tags because some of the
+# pinned SHAs were not real commits. To pin properly later, look up the SHAs at:
+#   https://github.com/<action-owner>/<action-repo>/releases/tag/<version>
+# The page shows the commit SHA under the version tag. Use that, plus a
+# comment noting the version, e.g.:
+#   uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
 
 permissions:
   contents: read
@@ -34,8 +37,10 @@ jobs:
             asset_ext: '.exe'
 
     steps:
-      - uses: actions/checkout@b4ffde65f46336ab88eb4be786bdfb0c52b4f9a0 # v4.1.1
-      - uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c # v5.0.0
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
         run: |
@@ -47,7 +52,7 @@ jobs:
         run: |
           pyinstaller --onefile --add-data "templates:templates" --name ${{ matrix.artifact_name }} app.py
 
-      - uses: actions/upload-artifact@b7b2886c7a86371a42cfd0e48a1ec6230c7f10d3 # v4.0.3
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: dist/${{ matrix.artifact_name }}${{ matrix.asset_ext }}
@@ -60,12 +65,12 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@b4ffde65f46336ab88eb4be786bdfb0c52b4f9a0 # v4.1.1
-      - uses: actions/download-artifact@6348268ac6567e94f4042763e74f18e15223bf5d # v4.1.1
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - uses: softprops/action-gh-release@dec0d2cbf5e635e9b303d6e9bfe36c1915fd0951 # v1
+      - uses: softprops/action-gh-release@v1
         with:
           files: |
             artifacts/3gal-linux/3gal-linux
