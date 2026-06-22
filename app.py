@@ -3,11 +3,13 @@
 # Details: Live scraping, AI PDF summary, comprehensive search
 #
 # Phase 1 (security) + Hotfix (sort + pdf viewer) + Phase 2 (reliability + hardening)
-# + Phase 3 (config.py + Procfile) applied.
+# + Phase 3 (config.py + Procfile) + Phase 4 (pytest test suite + OCR fallback) applied.
 #
-# Phase 3 changes:
-#   P3-07: All hard-coded constants moved to config.py and imported from there.
-#          Override any constant at runtime via environment variable.
+# Phase 4 changes:
+#   - All constants imported from config.py (single source of truth)
+#   - OCR fallback in extract_pdf_text() — opt-in via OCR_ENABLED env var
+#     Falls back to pytesseract OCR if pdfplumber finds no text layer
+#     (e.g., scanned image-only PDFs).
 
 import re
 import sqlite3
@@ -46,7 +48,7 @@ try:
 except ImportError:
     LANGDETECT_AVAILABLE = False
 
-# Phase 2 P1-03: removed googletrans. Hindi PDFs still get detected but no translation.
+# Phase 2 P1-03: removed googletrans.
 TRANSLATOR_AVAILABLE = False
 
 
@@ -399,7 +401,26 @@ def download_pdf(url):
         return None
 
 
+def _try_ocr_page(page):
+    """Phase 4: OCR a single pdfplumber page using pytesseract.
+
+    Returns the OCR'd text, or None if OCR is unavailable or fails.
+    Only called when OCR_ENABLED is True AND no text layer was found.
+    """
+    try:
+        import pytesseract
+    except ImportError:
+        return None
+    try:
+        pil_img = page.to_image(resolution=200).original
+        return pytesseract.image_to_string(pil_img)
+    except Exception as e:
+        print(f"OCR page error: {e}")
+        return None
+
+
 def extract_pdf_text(pdf_bytes):
+    """Extract text from PDF bytes with length caps (P2-05) + optional OCR fallback (Phase 4)."""
     if not PDF_AVAILABLE or pdf_bytes is None:
         return None
     try:
@@ -410,6 +431,25 @@ def extract_pdf_text(pdf_bytes):
                 text += page_text[:MAX_TEXT_PER_PAGE] + "\n"
                 if len(text) >= MAX_TEXT_TOTAL:
                     break
+
+            # Phase 4: OCR fallback for image-only PDFs.
+            # Only kicks in if (a) OCR_ENABLED env var is set AND (b) pytesseract + Tesseract binary are installed
+            # AND (c) pdfplumber found no text layer at all.
+            if not text.strip() and OCR_ENABLED:
+                print("--- [OCR] No text layer found; attempting OCR fallback ---")
+                ocr_pages_done = 0
+                for page in pdf.pages[:3]:  # cap OCR to 3 pages for latency
+                    ocr_text = _try_ocr_page(page)
+                    if ocr_text:
+                        text += ocr_text[:MAX_TEXT_PER_PAGE] + "\n"
+                        ocr_pages_done += 1
+                        if len(text) >= MAX_TEXT_TOTAL:
+                            break
+                if ocr_pages_done:
+                    print(f"--- [OCR] Recovered text from {ocr_pages_done} page(s) ---")
+                else:
+                    print("--- [OCR] No text recovered (tesseract/pytesseract may not be installed) ---")
+
             return text[:MAX_TEXT_TOTAL].strip()
     except Exception as e:
         print(f"PDF extraction error: {e}")
@@ -735,6 +775,7 @@ def health():
         "language_detection": LANGDETECT_AVAILABLE,
         "translation_support": TRANSLATOR_AVAILABLE,
         "max_announcements": MAX_ANNOUNCEMENTS,
+        "ocr_enabled": OCR_ENABLED,
     })
 
 
