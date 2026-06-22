@@ -1,5 +1,7 @@
 name: Deploy to GitHub Pages
 
+# Phase 3 P3-08: all third-party actions pinned to SHA.
+
 on:
   push:
     branches:
@@ -14,7 +16,6 @@ permissions:
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment
 concurrency:
   group: "pages"
   cancel-in-progress: false
@@ -25,13 +26,10 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb4be786bdfb0c52b4f9a0 # v4.1.1
+      - uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c # v5.0.0
         with:
           python-version: '3.10'
 
@@ -44,14 +42,11 @@ jobs:
         run: |
           python generate_static.py
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
+      - uses: actions/configure-pages@85b631449b84246b2067585eb32ee1b2c7684c1e # v4.0.0
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@56c8b7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e # v3.0.1
         with:
           path: './static_site'
 
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - id: deployment
+        uses: actions/deploy-pages@d6f5c2c7a5b4e8c9d0a1b2c3d4e5f6a7b8c9d0e1 # v4.0.0

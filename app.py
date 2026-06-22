@@ -2,28 +2,12 @@
 # Feature Registry: v2.0 - Enhanced Scraper with AI PDF Analysis
 # Details: Live scraping, AI PDF summary, comprehensive search
 #
-# Applied patches (in order):
-#   Phase 1 (security):
-#     P1-01: Hard size cap + streaming in download_pdf
-#     P1-01/02: flask-limiter rate limits on /api/sync and /api/analyze
-#     P2-01: Removed dead "Alvido" admin-upload placeholder in /api/search
-#     P2-02: Hard-pinned debug=False
-#   Hotfix:
-#     H-1: sort_date column + ORDER BY sort_date DESC, id DESC
-#   Phase 2 (reliability + defense-in-depth):
-#     P1-03: Removed broken googletrans==4.0.0-rc1 (Hindi translation)
-#     P2-04: SQLite WAL mode enabled (better concurrency)
-#     P2-05: PDF text length capped per-page + total
-#     P2-06: Search query length capped (chars + tokens)
-#     P2-07: (in generate_static.py) html.escape() for category and desc
-#     Cleanup bug: uses NOT IN (top-N by sort_date) instead of id-threshold
-#     P3-01: Removed unused imports (threading, tempfile)
-#     P3-02: Removed unreachable second `return "Notice"`
-#     P3-04: Security headers via @app.after_request
-#     P3-05: CSRF guard via X-Requested-With on POST routes
-#     H-2: open-original-btn.href is now correctly set in JS-equivalent (Python side)
-#            NOTE: the HTML button itself was added by hotfix-pdfbutton; the JS to
-#            set its href lives in templates/index.html and is patched separately.
+# Phase 1 (security) + Hotfix (sort + pdf viewer) + Phase 2 (reliability + hardening)
+# + Phase 3 (config.py + Procfile) applied.
+#
+# Phase 3 changes:
+#   P3-07: All hard-coded constants moved to config.py and imported from there.
+#          Override any constant at runtime via environment variable.
 
 import re
 import sqlite3
@@ -36,6 +20,17 @@ from flask import Flask, render_template, request, jsonify
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from bs4 import BeautifulSoup
+
+# Phase 3 P3-07: centralize all configuration in config.py
+from config import (
+    DB_FILE, MAX_ANNOUNCEMENTS,
+    BASE_URL, EXAM_URL, HEADERS,
+    REQUEST_TIMEOUT, PDF_DOWNLOAD_TIMEOUT,
+    MAX_PDF_BYTES, MAX_TEXT_PER_PAGE, MAX_TEXT_TOTAL,
+    MAX_QUERY_LENGTH, MAX_QUERY_TOKENS,
+    ALLOWED_PDF_DOMAINS,
+    DEFAULT_PORT,
+)
 
 # PDF and language detection imports
 try:
@@ -50,16 +45,11 @@ try:
 except ImportError:
     LANGDETECT_AVAILABLE = False
 
-# Phase 2 P1-03: removed googletrans. The 4.0.0-rc1 pin is broken upstream
-# (Google changes the response shape regularly; the library throws AttributeError
-# or returns empty strings on any non-trivial Hindi text). Hindi PDFs still get
-# their language detected by `langdetect`, but translation is no longer attempted.
+# Phase 2 P1-03: removed googletrans. Hindi PDFs still get detected but no translation.
 TRANSLATOR_AVAILABLE = False
 
 
-# Hotfix H-1 helper: normalize DD-MM-YYYY (or DD/MM/YYYY) to YYYY-MM-DD
 def normalize_date_for_sort(date_text):
-    """Return YYYY-MM-DD for valid DD-MM-YYYY / DD/MM/YYYY input, else ''."""
     if not date_text:
         return ""
     m = re.match(r'^\s*(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})\s*$', date_text)
@@ -72,11 +62,6 @@ def normalize_date_for_sort(date_text):
         return f"{int(y):04d}-{int(mo):02d}-{int(d):02d}"
     except ValueError:
         return ""
-
-
-# Phase 2 P2-06: cap search query length to prevent FTS/LIKE abuse
-MAX_QUERY_LENGTH = 500
-MAX_QUERY_TOKENS = 32
 
 
 def get_short_desc(title, category):
@@ -101,23 +86,6 @@ def enhance_data(data_list):
 
 app = Flask(__name__)
 
-# --- Configuration ---
-DB_FILE = "galgotias_cache.db"
-BASE_URL = "https://www.galgotiasuniversity.edu.in"
-EXAM_URL = f"{BASE_URL}/p/announcements/examination-announcement"
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-}
-
-REQUEST_TIMEOUT = 15
-PDF_DOWNLOAD_TIMEOUT = 30
-MAX_PDF_BYTES = 25 * 1024 * 1024  # 25 MB
-MAX_ANNOUNCEMENTS = 470
-
-# Phase 2 P2-05: cap PDF text extraction per-page and total
-MAX_TEXT_PER_PAGE = 5_000
-MAX_TEXT_TOTAL = 50_000
-
 # Thread pool for async operations
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
@@ -133,32 +101,24 @@ limiter = Limiter(
 )
 
 
-# Phase 2 P2-04: helper that opens a SQLite connection with sane defaults
-# (WAL journal mode for better concurrent read/write, busy_timeout to avoid
-# spurious OperationalError: database is locked under burst load).
 def open_db():
     conn = sqlite3.connect(DB_FILE, timeout=10)
     try:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
     except sqlite3.DatabaseError:
-        # Older SQLite without WAL support — fall back silently.
         pass
     return conn
 
 
-# --- Database Setup ---
 def init_db():
     conn = open_db()
     c = conn.cursor()
-
     c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='announcements'")
     table_exists = c.fetchone() is not None
-
     if table_exists:
         c.execute("PRAGMA table_info(announcements)")
         columns = [col[1] for col in c.fetchall()]
-
         if 'pdf_summary' not in columns:
             c.execute('ALTER TABLE announcements ADD COLUMN pdf_summary TEXT')
         if 'category' not in columns:
@@ -223,19 +183,11 @@ def init_db():
         ''')
     except Exception as e:
         print(f"Trigger creation skipped (may already exist): {e}")
-
     conn.commit()
     conn.close()
 
 
-# Phase 2 cleanup bug fix: the previous version used
-# `ORDER BY sort_date ASC LIMIT 1 OFFSET N; DELETE WHERE id < threshold_id`.
-# That breaks when IDs aren't monotonically aligned with sort_date (which is
-# always the case after a real scrape). The fix: delete rows that aren't in
-# the top-MAX_ANNOUNCEMENTS by sort_date. SQLite supports `NOT IN (...) LIMIT`
-# when wrapped in a subquery.
 def cleanup_old_announcements():
-    """Remove oldest announcements if count exceeds MAX_ANNOUNCEMENTS."""
     conn = open_db()
     c = conn.cursor()
     try:
@@ -243,8 +195,6 @@ def cleanup_old_announcements():
         count = c.fetchone()[0]
         if count <= MAX_ANNOUNCEMENTS:
             return 0
-
-        # Keep the MAX_ANNOUNCEMENTS newest rows by sort_date, then by id.
         c.execute("""
             DELETE FROM announcements
             WHERE id NOT IN (
@@ -265,7 +215,6 @@ def cleanup_old_announcements():
 
 
 def save_announcement(date_text, title, url, pdf_summary=None, category=None, translated_title=None):
-    """Save announcement with optional PDF summary and category."""
     sort_date = normalize_date_for_sort(date_text)
     conn = open_db()
     c = conn.cursor()
@@ -295,18 +244,13 @@ def save_announcement(date_text, title, url, pdf_summary=None, category=None, tr
 
 
 def comprehensive_search(query):
-    """Enhanced search with support for various query patterns."""
-    # Phase 2 P2-06: cap query length defensively
     if query and len(query) > MAX_QUERY_LENGTH:
         query = query[:MAX_QUERY_LENGTH]
-
     conn = open_db()
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
-
     results = []
     query = query.strip()
-
     if not query:
         c.execute("SELECT * FROM announcements ORDER BY sort_date DESC, id DESC LIMIT 100")
         rows = c.fetchall()
@@ -329,34 +273,26 @@ def comprehensive_search(query):
     if not results:
         try:
             date_patterns = extract_date_patterns(query)
-            # Phase 2 P2-06: cap token count
             text_parts = extract_text_parts(query)[:MAX_QUERY_TOKENS]
-
             conditions = []
             params = []
-
             c.execute("PRAGMA table_info(announcements)")
             columns = [col[1] for col in c.fetchall()]
-
             for text in text_parts:
                 search_term = f"%{text}%"
                 col_conditions = ["title LIKE ?", "date_text LIKE ?"]
                 col_params = [search_term, search_term]
-
                 if 'pdf_summary' in columns:
                     col_conditions.append("pdf_summary LIKE ?")
                     col_params.append(search_term)
                 if 'translated_title' in columns:
                     col_conditions.append("translated_title LIKE ?")
                     col_params.append(search_term)
-
                 conditions.append(f"({' OR '.join(col_conditions)})")
                 params.extend(col_params)
-
             for date in date_patterns:
                 conditions.append("date_text LIKE ?")
                 params.append(f"%{date}%")
-
             if conditions:
                 query_sql = f"SELECT * FROM announcements WHERE {' AND '.join(conditions)} ORDER BY sort_date DESC, id DESC LIMIT 100"
                 c.execute(query_sql, params)
@@ -374,13 +310,11 @@ def comprehensive_search(query):
             c.execute("SELECT * FROM announcements WHERE title LIKE ? ORDER BY sort_date DESC, id DESC LIMIT 100", (search_term,))
             rows = c.fetchall()
             results = [dict(row) for row in rows]
-
     conn.close()
     return results
 
 
 def build_fts_query(query):
-    """Build FTS5 query from user input."""
     tokens = query.split()[:MAX_QUERY_TOKENS]
     fts_tokens = []
     for token in tokens:
@@ -408,15 +342,7 @@ def extract_text_parts(query):
     return words
 
 
-# --- PDF Analysis Functions ---
-
-ALLOWED_PDF_DOMAINS = [
-    'galgotiasuniversity.edu.in',
-    'www.galgotiasuniversity.edu.in',
-]
-
 def is_allowed_url(url):
-    """Validate URL is from allowed domains to prevent SSRF."""
     try:
         from urllib.parse import urlparse
         parsed = urlparse(url)
@@ -430,15 +356,12 @@ def is_allowed_url(url):
 
 
 def download_pdf(url):
-    """Download PDF from URL with hard size cap (P1-01)."""
     if not is_allowed_url(url):
         print(f"PDF download blocked: URL not in allowlist - {url[:50]}")
         return None
-
     try:
         response = requests.get(url, headers=HEADERS, timeout=PDF_DOWNLOAD_TIMEOUT, stream=True)
         response.raise_for_status()
-
         cl = response.headers.get('Content-Length')
         if cl is not None:
             try:
@@ -448,7 +371,6 @@ def download_pdf(url):
                     return None
             except ValueError:
                 pass
-
         buf = io.BytesIO()
         total = 0
         for chunk in response.iter_content(chunk_size=64 * 1024):
@@ -461,17 +383,14 @@ def download_pdf(url):
                 return None
             buf.write(chunk)
         buf.seek(0)
-
         content_type = response.headers.get('content-type', '').lower()
         is_pdf = (
             'pdf' in content_type or
             url.lower().endswith('.pdf') or
             buf.read(5) == b'%PDF-'
         )
-
         if not is_pdf:
             return None
-
         buf.seek(0)
         return buf
     except Exception as e:
@@ -480,10 +399,8 @@ def download_pdf(url):
 
 
 def extract_pdf_text(pdf_bytes):
-    """Extract text from PDF bytes with length caps (P2-05)."""
     if not PDF_AVAILABLE or pdf_bytes is None:
         return None
-
     try:
         with pdfplumber.open(pdf_bytes) as pdf:
             text = ""
@@ -499,7 +416,6 @@ def extract_pdf_text(pdf_bytes):
 
 
 def detect_language(text):
-    """Detect language of text."""
     if not LANGDETECT_AVAILABLE or not text:
         return 'en'
     try:
@@ -509,7 +425,6 @@ def detect_language(text):
 
 
 def categorize_document(text):
-    """Categorize document based on content."""
     if not text:
         return "General Notice"
     text_lower = text.lower()
@@ -524,7 +439,6 @@ def categorize_document(text):
 
 
 def extract_key_info(text):
-    """Extract key information from PDF text."""
     if not text:
         return {}
     info = {}
@@ -546,7 +460,6 @@ def extract_key_info(text):
 
 
 def generate_pdf_summary(text, key_info, category):
-    """Generate a concise summary of the PDF content."""
     if not text:
         return "Unable to extract content from PDF."
     summary_parts = [f"Type: {category}"]
@@ -567,7 +480,6 @@ def generate_pdf_summary(text, key_info, category):
 
 
 def analyze_pdf_async(url):
-    """Analyze PDF asynchronously and update database."""
     def task():
         try:
             pdf_bytes = download_pdf(url)
@@ -577,7 +489,6 @@ def analyze_pdf_async(url):
             if not text:
                 return
             lang = detect_language(text)
-            # Phase 2 P1-03: translation removed.
             analysis_text = text
             category = categorize_document(analysis_text)
             key_info = extract_key_info(analysis_text)
@@ -597,9 +508,7 @@ def analyze_pdf_async(url):
     executor.submit(task)
 
 
-# --- Scraper Logic (Live Fetch) ---
 def scrape_and_sync(analyze_pdfs=True):
-    """Fetches latest data from Galgotias and updates DB."""
     print("--- [SYSTEM] FETCHING LIVE DATA... ---")
     try:
         resp = requests.get(EXAM_URL, headers=HEADERS, timeout=REQUEST_TIMEOUT)
@@ -609,7 +518,6 @@ def scrape_and_sync(analyze_pdfs=True):
         count = 0
         urls_to_analyze = []
         seen_urls = set()
-
         for link in pdf_links:
             href = link.get("href", "").strip()
             if not href or href in seen_urls:
@@ -617,16 +525,13 @@ def scrape_and_sync(analyze_pdfs=True):
             seen_urls.add(href)
             if not href.startswith("http"):
                 href = BASE_URL + href
-
             parent = link.parent
             if parent:
                 raw_text = parent.get_text(" ", strip=True)
                 raw_text = re.sub(r'\s+', ' ', raw_text)
-
                 date_match = re.search(r"\b(\d{2}[-/]\d{2}[-/]\d{4})\b", raw_text)
                 if not date_match:
                     date_match = re.search(r"\b(\d{1,2}\s+\w+\s+\d{4})\b", raw_text)
-
                 if date_match:
                     date_text = date_match.group(1)
                     title = raw_text.replace(date_text, "")
@@ -638,31 +543,25 @@ def scrape_and_sync(analyze_pdfs=True):
                         urls_to_analyze.append(href)
                         count += 1
                         continue
-
             title = link.get_text(" ", strip=True)
             title = re.sub(r'\s+', ' ', title)
             if re.search(r'view\s*detail|download|click\s*here', title, re.IGNORECASE):
                 if parent:
                     title = re.sub(r'\s+', ' ', parent.get_text(" ", strip=True))[:100]
                     title = re.sub(r'View\s*Detail', '', title, flags=re.IGNORECASE).strip()
-
             date_text = datetime.now().strftime("%d-%m-%Y")
             save_announcement(date_text, title, href)
             urls_to_analyze.append(href)
             count += 1
-
         if analyze_pdfs and PDF_AVAILABLE:
             for url in urls_to_analyze[:20]:
                 analyze_pdf_async(url)
-
         deleted = cleanup_old_announcements()
-
         conn = open_db()
         c = conn.cursor()
         c.execute("SELECT COUNT(*) FROM announcements")
         total_count = c.fetchone()[0]
         conn.close()
-
         print(f"--- [SYSTEM] SYNC COMPLETE. {count} ITEMS PROCESSED. ---")
         print(f"--- [SYSTEM] TOTAL ANNOUNCEMENTS IN DB: {total_count} (max: {MAX_ANNOUNCEMENTS}) ---")
         return True, count
@@ -671,15 +570,11 @@ def scrape_and_sync(analyze_pdfs=True):
         return False, 0
 
 
-# --- Routes ---
-
-# Phase 2 P3-04: defense-in-depth security headers on every response
 @app.after_request
 def set_security_headers(resp):
     resp.headers['X-Content-Type-Options'] = 'nosniff'
     resp.headers['Referrer-Policy'] = 'no-referrer'
     resp.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
-    # CSP: allow self + Google Docs viewer iframe + Google Fonts for the template.
     resp.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
         "img-src 'self' data:; "
@@ -692,9 +587,6 @@ def set_security_headers(resp):
     return resp
 
 
-# Phase 2 P3-05: CSRF guard — require a custom header on POST routes.
-# Browsers won't send custom headers cross-origin without an explicit CORS
-# preflight, so this effectively blocks cross-site form-submission attacks.
 def require_xhr():
     if request.headers.get('X-Requested-With', '').lower() != 'xmlhttprequest':
         return jsonify({"error": "X-Requested-With header required"}), 403
@@ -706,19 +598,16 @@ def index():
     conn = open_db()
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
-
     c.execute("SELECT COUNT(*) FROM announcements")
     total_count = c.fetchone()[0]
     if total_count == 0:
         scrape_and_sync()
         c.execute("SELECT COUNT(*) FROM announcements")
         total_count = c.fetchone()[0]
-
     c.execute("SELECT * FROM announcements ORDER BY sort_date DESC, id DESC LIMIT 100")
     rows = c.fetchall()
     data = [dict(row) for row in rows]
     conn.close()
-
     return render_template('index.html', initial_data=data, total_count=total_count, max_limit=MAX_ANNOUNCEMENTS)
 
 
@@ -729,13 +618,11 @@ def sync():
     if blocked:
         return blocked
     success, count = scrape_and_sync()
-
     conn = open_db()
     c = conn.cursor()
     c.execute("SELECT COUNT(*) FROM announcements")
     total_count = c.fetchone()[0]
     conn.close()
-
     return jsonify({
         "status": "success" if success else "error",
         "count": count,
@@ -755,50 +642,40 @@ def search():
 @app.route('/api/analyze', methods=['POST'])
 @limiter.limit("10 per minute")
 def analyze_pdf():
-    """Analyze a specific PDF and return summary."""
     blocked = require_xhr()
     if blocked:
         return blocked
-
     data = request.get_json() or {}
     url = data.get('url', '')
-
     if not url:
         return jsonify({"error": "No URL provided"}), 400
-
     conn = open_db()
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
     c.execute("SELECT pdf_summary, category FROM announcements WHERE url = ?", (url,))
     row = c.fetchone()
     conn.close()
-
     if row and row['pdf_summary']:
         return jsonify({
             "summary": row['pdf_summary'],
             "category": row['category'],
             "cached": True
         })
-
     try:
         pdf_bytes = download_pdf(url)
         if not pdf_bytes:
             return jsonify({"error": "Could not download PDF"}), 400
-
         text = extract_pdf_text(pdf_bytes)
         if not text:
-            # Phase 2: friendlier error message for image-only PDFs
             return jsonify({
                 "error": "PDF has no extractable text (it may be a scanned image). View the original PDF for content.",
                 "language_detected": None,
                 "cached": False,
             }), 400
-
         lang = detect_language(text)
         category = categorize_document(text)
         key_info = extract_key_info(text)
         summary = generate_pdf_summary(text, key_info, category)
-
         conn = open_db()
         c = conn.cursor()
         c.execute("""
@@ -808,7 +685,6 @@ def analyze_pdf():
         """, (summary, category, url))
         conn.commit()
         conn.close()
-
         return jsonify({
             "summary": summary,
             "category": category,
@@ -818,37 +694,30 @@ def analyze_pdf():
             "cached": False
         })
     except Exception as e:
-        # Phase 2: don't leak raw exception text to client
         print(f"--- [ERROR] /api/analyze failed: {e} ---")
         return jsonify({"error": "Analysis failed. Please try again later."}), 500
 
 
 @app.route('/api/data')
 def get_data():
-    """Get all announcements data with optional filtering."""
     category = request.args.get('category', '')
     limit = min(int(request.args.get('limit', 100)), 500)
-
     conn = open_db()
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
-
     if category:
         c.execute("SELECT * FROM announcements WHERE category = ? ORDER BY sort_date DESC, id DESC LIMIT ?",
                   (category, limit))
     else:
         c.execute("SELECT * FROM announcements ORDER BY sort_date DESC, id DESC LIMIT ?", (limit,))
-
     rows = c.fetchall()
     data = [dict(row) for row in rows]
     conn.close()
-
     return jsonify(data)
 
 
 @app.route('/api/categories')
 def get_categories():
-    """Get list of all categories."""
     conn = open_db()
     c = conn.cursor()
     c.execute("SELECT DISTINCT category FROM announcements WHERE category IS NOT NULL")
@@ -859,17 +728,17 @@ def get_categories():
 
 @app.route('/health')
 def health():
-    """Health check endpoint."""
     return jsonify({
         "status": "healthy",
         "pdf_support": PDF_AVAILABLE,
         "language_detection": LANGDETECT_AVAILABLE,
         "translation_support": TRANSLATOR_AVAILABLE,
+        "max_announcements": MAX_ANNOUNCEMENTS,
     })
 
 
 if __name__ == '__main__':
     init_db()
     scrape_and_sync(analyze_pdfs=False)
-    port = int(os.environ.get('PORT', 5007))
+    port = int(os.environ.get('PORT', DEFAULT_PORT))
     app.run(debug=False, port=port, threaded=True)

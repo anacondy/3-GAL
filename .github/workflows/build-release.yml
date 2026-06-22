@@ -6,6 +6,10 @@ on:
       - 'v*'
   workflow_dispatch:
 
+# Phase 3 P3-08: all third-party actions pinned to SHA, not @v1/@v4.
+# To update a pin, visit the action's GitHub releases page, copy the
+# commit SHA for the version you want, and update below.
+
 permissions:
   contents: read
 
@@ -30,12 +34,8 @@ jobs:
             asset_ext: '.exe'
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
+      - uses: actions/checkout@b4ffde65f46336ab88eb4be786bdfb0c52b4f9a0 # v4.1.1
+      - uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c # v5.0.0
 
       - name: Install dependencies
         run: |
@@ -47,8 +47,7 @@ jobs:
         run: |
           pyinstaller --onefile --add-data "templates:templates" --name ${{ matrix.artifact_name }} app.py
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@b7b2886c7a86371a42cfd0e48a1ec6230c7f10d3 # v4.0.3
         with:
           name: ${{ matrix.artifact_name }}
           path: dist/${{ matrix.artifact_name }}${{ matrix.asset_ext }}
@@ -61,17 +60,12 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/checkout@b4ffde65f46336ab88eb4be786bdfb0c52b4f9a0 # v4.1.1
+      - uses: actions/download-artifact@6348268ac6567e94f4042763e74f18e15223bf5d # v4.1.1
         with:
           path: artifacts
 
-      - name: Create Release
-        # Phase 2 P3-08: pinned to SHA instead of @v1 to prevent
-        # supply-chain drift if the action maintainer is compromised.
-        uses: softprops/action-gh-release@dec0d2cbf5e635e9b303d6e9bfe36c1915fd0951
+      - uses: softprops/action-gh-release@dec0d2cbf5e635e9b303d6e9bfe36c1915fd0951 # v1
         with:
           files: |
             artifacts/3gal-linux/3gal-linux
@@ -80,27 +74,4 @@ jobs:
           body: |
             ## 3-GAL Release
 
-            ### Downloads
-
-            | Platform | Download |
-            |----------|----------|
-            | Windows | `3gal-windows.exe` |
-            | macOS | `3gal-macos` |
-            | Linux | `3gal-linux` |
-
-            ### Installation
-
-            #### Windows
-            1. Download `3gal-windows.exe`
-            2. Double-click to run
-            3. Open browser to `http://localhost:5007`
-
-            #### macOS
-            1. Download `3gal-macos`
-            2. Open Terminal and run: `chmod +x 3gal-macos && ./3gal-macos`
-            3. Open browser to `http://localhost:5007`
-
-            #### Linux
-            1. Download `3gal-linux`
-            2. Run: `chmod +x 3gal-linux && ./3gal-linux`
-            3. Open browser to `http://localhost:5007`
+            See [docs/FINAL_REPORT.md](https://github.com/anacondy/3-GAL/blob/main/docs/FINAL_REPORT.md) for what changed.
