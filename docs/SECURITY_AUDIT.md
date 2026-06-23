@@ -1,8 +1,10 @@
-# 3-GAL — Security & Robustness Audit Report
+﻿# STATUS (2026-06-23): Every finding in this audit has been remediated in the current main branch. See docs/FINAL_REPORT.md for the per-commit fix map.
 
-**Target:** `3-GAL` — Real-time Galgotias University Examination Announcements scraper (Flask + static-site generator)
+# 3-GAL â€” Security & Robustness Audit Report
+
+**Target:** `3-GAL` â€” Real-time Galgotias University Examination Announcements scraper (Flask + static-site generator)
 **Repo files reviewed:** `app.py`, `generate_static.py`, `cinema-scanner-/src/App.jsx`, `templates/index.html`, `static_site/index.html`, `.github/workflows/*.yml`, `requirements.txt`, `README.md`, `docs/API.md`, `docs/WIKI.md`
-**Audit type:** Black-box style senior code review — vulnerabilities, error handling, hardening gaps, attack-surface enumeration
+**Audit type:** Black-box style senior code review â€” vulnerabilities, error handling, hardening gaps, attack-surface enumeration
 **Auditor mindset:** "What would a bored teenager with `curl` and 2 hours do to this app?"
 
 ---
@@ -14,7 +16,7 @@ The project is a **read-only public-information aggregator** of public PDF annou
 1. **Abuse of the public, unauthenticated HTTP surface** (DoS, scraping amplification against the upstream university site, SSRF via the `/api/analyze` endpoint).
 2. **Reliability/availability** bugs that will manifest in production under load.
 3. **Insecure-by-default dependencies** (`googletrans==4.0.0-rc1`, hard-pinned, known-broken).
-4. **A "secret" that isn't a secret** (`Alvido` written in plaintext in `README.md`) — security theater, not a vulnerability.
+4. **A "secret" that isn't a secret** (`Alvido` written in plaintext in `README.md`) â€” security theater, not a vulnerability.
 
 No SQL injection, no XSS, and the SSRF allowlist for the analyzer endpoint is correctly implemented. Those are the wins.
 
@@ -22,11 +24,11 @@ No SQL injection, no XSS, and the SSRF allowlist for the analyzer endpoint is co
 
 | Severity | Count |
 |----------|-------|
-| 🔴 P0 — Critical / RCE-class | 0 |
-| 🟠 P1 — High | 3 |
-| 🟡 P2 — Medium | 7 |
-| 🟢 P3 — Low | 8 |
-| ⚪ P4 — Informational / Hygiene | 6 |
+| ðŸ”´ P0 â€” Critical / RCE-class | 0 |
+| ðŸŸ  P1 â€” High | 3 |
+| ðŸŸ¡ P2 â€” Medium | 7 |
+| ðŸŸ¢ P3 â€” Low | 8 |
+| âšª P4 â€” Informational / Hygiene | 6 |
 
 > **Overall posture:** Safe for personal/demo use. **Not safe to expose to the public internet** without rate-limiting, an actual reverse proxy with WAF, and removing the `FLASK_DEBUG` environment knob.
 
@@ -36,34 +38,34 @@ No SQL injection, no XSS, and the SSRF allowlist for the analyzer endpoint is co
 
 | Asset | Threat | Realistic? |
 |---|---|---|
-| Upstream Galgotias site | DoS via scraping amplification from `/api/sync` | High — endpoint is unauthenticated |
+| Upstream Galgotias site | DoS via scraping amplification from `/api/sync` | High â€” endpoint is unauthenticated |
 | Server CPU/RAM | DoS via repeated `/api/analyze` calls downloading arbitrary PDFs | High |
-| Server disk | DB bloat via `/api/sync` spam | Low — bounded by `MAX_ANNOUNCEMENTS=470` |
-| Internal services | SSRF via `/api/analyze` | Low — allowlist is correct |
-| Users visiting the site | XSS via reflected titles | Very Low — Jinja2 auto-escapes; static-site escaping is partial |
-| Admin panel | Bypass via leaked `Alvido` password | None — no admin panel actually exists |
-| Browser users of `cinema-scanner-` | Gemini API key theft via DevTools / referer | High — key is shipped in the JS bundle |
+| Server disk | DB bloat via `/api/sync` spam | Low â€” bounded by `MAX_ANNOUNCEMENTS=470` |
+| Internal services | SSRF via `/api/analyze` | Low â€” allowlist is correct |
+| Users visiting the site | XSS via reflected titles | Very Low â€” Jinja2 auto-escapes; static-site escaping is partial |
+| Admin panel | Bypass via leaked `Alvido` password | None â€” no admin panel actually exists |
+| Browser users of `cinema-scanner-` | Gemini API key theft via DevTools / referer | High â€” key is shipped in the JS bundle |
 
 ---
 
 ## 3. Findings (ranked)
 
-### 🔴 P0 — Critical
+### ðŸ”´ P0 â€” Critical
 
 *None found.* The codebase does not contain a classic RCE, SQLi, or pre-auth data-exposure chain.
 
 ---
 
-### 🟠 P1 — High
+### ðŸŸ  P1 â€” High
 
-#### P1-01 — Public, unauthenticated `/api/analyze` accepts arbitrary attacker-controlled URLs → SSRF amplification & outbound DoS
+#### P1-01 â€” Public, unauthenticated `/api/analyze` accepts arbitrary attacker-controlled URLs â†’ SSRF amplification & outbound DoS
 
-- **Location:** `app.py` — `@app.route('/api/analyze', methods=['POST'])`
+- **Location:** `app.py` â€” `@app.route('/api/analyze', methods=['POST'])`
 - **What it does:** Any internet user can POST `{"url": "https://anything/"}` and the server will fetch it.
-- **What stops it being a classic SSRF:** `download_pdf()` calls `is_allowed_url()`, which correctly checks `parsed.scheme in ('http','https')` AND that `host` is in `ALLOWED_PDF_DOMAINS` (`galgotiasuniversity.edu.in` / `www.galgotiasuniversity.edu.in`) with `endswith('.galgotiasuniversity.edu.in')` defense — I tested the obvious bypass shapes (`https://x@evil/`, `https://galgotiasuniversity.edu.in.evil/`, ports, punycode variants) and they all correctly fail.
+- **What stops it being a classic SSRF:** `download_pdf()` calls `is_allowed_url()`, which correctly checks `parsed.scheme in ('http','https')` AND that `host` is in `ALLOWED_PDF_DOMAINS` (`galgotiasuniversity.edu.in` / `www.galgotiasuniversity.edu.in`) with `endswith('.galgotiasuniversity.edu.in')` defense â€” I tested the obvious bypass shapes (`https://x@evil/`, `https://galgotiasuniversity.edu.in.evil/`, ports, punycode variants) and they all correctly fail.
 - **The real problem:** This endpoint is still a **paid egress / abuse primitive**. An attacker can:
   1. Trigger `response.content` to be loaded fully into memory (`io.BytesIO(content)` in `download_pdf`). There's **no `Content-Length` cap and no streaming limit**. A single 500 MB response will OOM the worker.
-  2. Trigger many concurrent requests → the 4-worker `ThreadPoolExecutor` queues them, request handler threads pile up.
+  2. Trigger many concurrent requests â†’ the 4-worker `ThreadPoolExecutor` queues them, request handler threads pile up.
   3. If the upstream Galgotias site ever hosts attacker-controllable content (e.g., user-uploaded PDFs), this becomes a server-side request **abuse chain**, not just SSRF.
 - **Impact:** Outbound bandwidth burn, memory exhaustion, possible IP reputation damage if abused from a shared host.
 - **Severity justification:** Pre-auth, no rate limit, no size cap. High.
@@ -94,9 +96,9 @@ def analyze_pdf(): ...
 
 ---
 
-#### P1-02 — `/api/sync` is an unauthenticated, public "make a request to galgotiasuniversity.edu.in" button
+#### P1-02 â€” `/api/sync` is an unauthenticated, public "make a request to galgotiasuniversity.edu.in" button
 
-- **Location:** `app.py` — `@app.route('/api/sync', methods=['POST'])`
+- **Location:** `app.py` â€” `@app.route('/api/sync', methods=['POST'])`
 - **What it does:** Anyone, anywhere, can POST and the server will issue a live `requests.get(EXAM_URL, ...)` against the university website. No auth, no rate limit, no CSRF protection.
 - **Impact:**
   - **Scraping amplification / DDoS-as-a-service** against a third-party university site from your infrastructure. This is the kind of thing that gets a project taken offline by abuse complaints.
@@ -110,7 +112,7 @@ def analyze_pdf(): ...
 
 ---
 
-#### P1-03 — `googletrans==4.0.0-rc1` is pinned to a 4-year-old pre-release that no longer works
+#### P1-03 â€” `googletrans==4.0.0-rc1` is pinned to a 4-year-old pre-release that no longer works
 
 - **Location:** `requirements.txt` line: `googletrans==4.0.0-rc1`
 - **Why this is in P1 and not P4:** This is not "merely outdated." The `4.0.0-rc1` line uses an **undocumented Google Translate web endpoint** that Google has been throttling/banning. In practice, this library:
@@ -124,7 +126,7 @@ def analyze_pdf(): ...
 **Fix sketch:**
 ```python
 # Option A: drop the dependency and use the official Google Cloud Translate API
-# Option B: drop it entirely and ship a "Hindi detected — no translation available" notice
+# Option B: drop it entirely and ship a "Hindi detected â€” no translation available" notice
 # Option C: pin to deep-translator (actively maintained) instead
 # requirements.txt:
 deep-translator>=1.11.4   # instead of googletrans==4.0.0-rc1
@@ -132,9 +134,9 @@ deep-translator>=1.11.4   # instead of googletrans==4.0.0-rc1
 
 ---
 
-### 🟡 P2 — Medium
+### ðŸŸ¡ P2 â€” Medium
 
-#### P2-01 — `Alvido` "admin password" is in plaintext in the README — security theater
+#### P2-01 â€” `Alvido` "admin password" is in plaintext in the README â€” security theater
 
 - **Locations:**
   - `README.md` (public, in the repo): *"Type `upload` in the search box and enter `Alvido` for admin access."*
@@ -142,9 +144,9 @@ deep-translator>=1.11.4   # instead of googletrans==4.0.0-rc1
   - `docs/API.md`: *"Admin functions use client-side credential check."*
 - **The problem:**
   - There is **no upload endpoint** anywhere in the codebase. The README and the API doc describe a feature that **does not exist**.
-  - There is **no client-side check** either — searching the entire bundle for "Alvido" returns matches only in the README and the `print()` statement. No JS prompt, no modal, no submit handler.
-  - Anyone reading the repo knows the password — but there is nothing for the password to gate.
-- **Impact:** None today (no protected asset). **High future risk:** when someone finally wires up `/api/upload`, they'll think "the README says Alvido, that's secure, ship it" — and it'll be a real RCE pivot.
+  - There is **no client-side check** either â€” searching the entire bundle for "Alvido" returns matches only in the README and the `print()` statement. No JS prompt, no modal, no submit handler.
+  - Anyone reading the repo knows the password â€” but there is nothing for the password to gate.
+- **Impact:** None today (no protected asset). **High future risk:** when someone finally wires up `/api/upload`, they'll think "the README says Alvido, that's secure, ship it" â€” and it'll be a real RCE pivot.
 - **Severity justification:** Not exploitable *now*, but the pattern is a foot-gun. Remove it.
 
 **Fix sketch:**
@@ -154,7 +156,7 @@ deep-translator>=1.11.4   # instead of googletrans==4.0.0-rc1
 
 ---
 
-#### P2-02 — `FLASK_DEBUG` toggle exposes Werkzeug interactive debugger if misconfigured
+#### P2-02 â€” `FLASK_DEBUG` toggle exposes Werkzeug interactive debugger if misconfigured
 
 - **Location:** `app.py` last block:
   ```python
@@ -176,7 +178,7 @@ Also remove the `FLASK_DEBUG` env-var plumbing entirely.
 
 ---
 
-#### P2-03 — `executor.submit(...)` returns unawaited `Future`s; thread-pool queue has no upper bound
+#### P2-03 â€” `executor.submit(...)` returns unawaited `Future`s; thread-pool queue has no upper bound
 
 - **Location:** `app.py`:
   ```python
@@ -189,23 +191,23 @@ Also remove the `FLASK_DEBUG` env-var plumbing entirely.
 - **What this means:** Every call to `/api/analyze` or every `/api/sync` that finds new URLs fires a `submit()` whose `Future` is **discarded**. No error propagation, no backpressure, no shutdown handling beyond `executor.shutdown(wait=False)` at exit.
 - **Impact:**
   - If 1000 syncs are triggered in 10 seconds, you have ~5000 PDF-parse tasks queued in a 4-worker pool. Memory grows until OOM.
-  - Errors inside `task()` are swallowed by the bare `except Exception as e: print(...)` block — no telemetry, no alerting.
-  - Tasks may run **after** the request handler has returned and the DB connection has been GC'd → potential use-after-close on the SQLite cursor (currently masked by per-task connection creation, but fragile).
+  - Errors inside `task()` are swallowed by the bare `except Exception as e: print(...)` block â€” no telemetry, no alerting.
+  - Tasks may run **after** the request handler has returned and the DB connection has been GC'd â†’ potential use-after-close on the SQLite cursor (currently masked by per-task connection creation, but fragile).
 - **Severity justification:** Predictable DoS under abuse (see P1-01).
 
 **Fix sketch:**
-- Bound the executor queue with `ThreadPoolExecutor(max_workers=4, max_queue_size=200)` — actually, Python's stdlib doesn't support that. Use `concurrent.futures.ThreadPoolExecutor` with a semaphore, or switch to `asyncio` + `aiohttp` for the I/O-bound parts.
+- Bound the executor queue with `ThreadPoolExecutor(max_workers=4, max_queue_size=200)` â€” actually, Python's stdlib doesn't support that. Use `concurrent.futures.ThreadPoolExecutor` with a semaphore, or switch to `asyncio` + `aiohttp` for the I/O-bound parts.
 - Wrap `task()` so it logs to a real logger, not `print`.
 - Use a `try/finally` to ensure `conn.close()` runs even on error.
 
 ---
 
-#### P2-04 — SQLite DB file written next to the source tree, no file locking strategy beyond Python's stdlib
+#### P2-04 â€” SQLite DB file written next to the source tree, no file locking strategy beyond Python's stdlib
 
 - **Location:** `app.py`: `DB_FILE = "galgotias_cache.db"` (relative path).
 - **What this means:**
-  - The DB file lives in `C:\Users\iassh\3-GAL\` (or whatever the cwd is) — meaning whatever user runs `python app.py` writes there. In a production deploy as a service account, this is the service-account's home — fine. But in a multi-user box (PythonAnywhere, shared host), this is **other-user-readable SQLite containing your crawled content + any cached translation output**.
-  - No `PRAGMA journal_mode=WAL` set → under concurrent `/api/sync` + `/api/search`, you'll get `OperationalError: database is locked`.
+  - The DB file lives in `C:\Users\iassh\3-GAL\` (or whatever the cwd is) â€” meaning whatever user runs `python app.py` writes there. In a production deploy as a service account, this is the service-account's home â€” fine. But in a multi-user box (PythonAnywhere, shared host), this is **other-user-readable SQLite containing your crawled content + any cached translation output**.
+  - No `PRAGMA journal_mode=WAL` set â†’ under concurrent `/api/sync` + `/api/search`, you'll get `OperationalError: database is locked`.
   - No `PRAGMA foreign_keys=ON` (you don't need it here, but worth flagging as hygiene).
 - **Severity justification:** Predictable race under any concurrent load.
 
@@ -218,16 +220,16 @@ conn.execute("PRAGMA synchronous=NORMAL")  # safe enough with WAL
 
 ---
 
-#### P2-05 — `extract_pdf_text` reads `pdf.pages[:10]` but unbounded text is then passed to regex extraction
+#### P2-05 â€” `extract_pdf_text` reads `pdf.pages[:10]` but unbounded text is then passed to regex extraction
 
-- **Location:** `app.py` `extract_pdf_text()` → `extract_key_info()`:
+- **Location:** `app.py` `extract_pdf_text()` â†’ `extract_key_info()`:
   ```python
   paper_codes = re.findall(r'\b([A-Z]{2,4}[-\s]?\d{3,4}[-\s]?[A-Z]?)\b', text, re.I)
   ...
   dates += re.findall(r'\b(\d{1,2}\s+(?:jan|feb|mar|...)\s+\d{2,4})\b', text, re.I)
   ```
-- **Analysis:** I traced these patterns for catastrophic backtracking (ReDoS). The patterns are bounded — no nested quantifiers, no alternation overlap — so they are **not** ReDoS-prone. ✅
-- **However:** `text[:200]` truncation in `generate_pdf_summary` is on the *joined* string. If the PDF is malformed, `page.extract_text()` can return very long single-line strings (pdfplumber is forgiving). Combined with `text.strip()` and joining 10 pages, you can produce ~hundreds of KB of text — small but worth bounding.
+- **Analysis:** I traced these patterns for catastrophic backtracking (ReDoS). The patterns are bounded â€” no nested quantifiers, no alternation overlap â€” so they are **not** ReDoS-prone. âœ…
+- **However:** `text[:200]` truncation in `generate_pdf_summary` is on the *joined* string. If the PDF is malformed, `page.extract_text()` can return very long single-line strings (pdfplumber is forgiving). Combined with `text.strip()` and joining 10 pages, you can produce ~hundreds of KB of text â€” small but worth bounding.
 - **Severity justification:** Low real-world impact, defensive coding only.
 
 **Fix sketch:**
@@ -241,11 +243,11 @@ return text[:50_000].strip()   # hard total cap
 
 ---
 
-#### P2-06 — `extract_text_parts` splits on whitespace but never caps `len(text_parts)`; combined with unbounded FTS query length
+#### P2-06 â€” `extract_text_parts` splits on whitespace but never caps `len(text_parts)`; combined with unbounded FTS query length
 
 - **Location:** `app.py` `build_fts_query()` and `extract_text_parts()`.
-- **What this means:** A 100 KB search query is split into N tokens, each wrapped in `"..."*` and OR'd together: `'"a"* OR "b"* OR "c"* ...'`. SQLite FTS5 will choke on a query string larger than ~1 MB and may raise an exception (caught by the broad `except` and falls back to LIKE — but the LIKE path then runs `title LIKE '%' + '%'.join(huge_words) + '%'`).
-- **The good news:** The FTS query construction strips `"` and `'`, which mitigates FTS operator injection. Inside a `"..."` phrase, FTS5 treats everything literally — so this isn't an injection vector, just a length/stability issue.
+- **What this means:** A 100 KB search query is split into N tokens, each wrapped in `"..."*` and OR'd together: `'"a"* OR "b"* OR "c"* ...'`. SQLite FTS5 will choke on a query string larger than ~1 MB and may raise an exception (caught by the broad `except` and falls back to LIKE â€” but the LIKE path then runs `title LIKE '%' + '%'.join(huge_words) + '%'`).
+- **The good news:** The FTS query construction strips `"` and `'`, which mitigates FTS operator injection. Inside a `"..."` phrase, FTS5 treats everything literally â€” so this isn't an injection vector, just a length/stability issue.
 - **Severity justification:** Latent DoS via pathological search queries. No auth gate makes this exploitable.
 
 **Fix sketch:**
@@ -259,7 +261,7 @@ def build_fts_query(query):
 
 ---
 
-#### P2-07 — Static-site generator (`generate_static.py`) injects announcement data into HTML/JS without full HTML escaping
+#### P2-07 â€” Static-site generator (`generate_static.py`) injects announcement data into HTML/JS without full HTML escaping
 
 - **Location:** `generate_static.py` `generate_full_static_html()`:
   ```python
@@ -272,9 +274,9 @@ def build_fts_query(query):
   '''
   ```
 - **What I found:**
-  - ✅ `title` and `url` are HTML-escaped.
-  - ⚠️ `item.get("desc", ...)` is **not escaped**. The default desc comes from `get_short_desc()` which returns hardcoded English strings, so today this is safe.
-  - ⚠️ `category` is inserted into `<span class="card-category">{item.get("category", "")}</span>` **without escaping**. If a future code path ever produces a category containing `<`/`&`/script, you get stored XSS that ships to GitHub Pages.
+  - âœ… `title` and `url` are HTML-escaped.
+  - âš ï¸ `item.get("desc", ...)` is **not escaped**. The default desc comes from `get_short_desc()` which returns hardcoded English strings, so today this is safe.
+  - âš ï¸ `category` is inserted into `<span class="card-category">{item.get("category", "")}</span>` **without escaping**. If a future code path ever produces a category containing `<`/`&`/script, you get stored XSS that ships to GitHub Pages.
 - **The good news:** Today, `category` only ever takes the 8 hardcoded values from `categorize_title()`. But the abstraction is fragile.
 - **Severity justification:** Defensive. Today zero exploitability. Tomorrow one careless edit away from persistent XSS on `anacondy.github.io/3-GAL/`.
 
@@ -295,15 +297,15 @@ cards_html += f'''
 
 ---
 
-### 🟢 P3 — Low
+### ðŸŸ¢ P3 â€” Low
 
-#### P3-01 — Unused imports in `app.py` (`threading`, `tempfile`)
+#### P3-01 â€” Unused imports in `app.py` (`threading`, `tempfile`)
 
 - **Location:** `app.py` top of file.
 - **Why it matters:** Minor. Indicates dead code paths that may have once contained real logic. Worth deleting to reduce the attack surface that you have to reason about.
 - **Fix:** `del threading`, `del tempfile`. (Just remove the import lines.)
 
-#### P3-03 — `categorize_document()` has unreachable dead code
+#### P3-03 â€” `categorize_document()` has unreachable dead code
 
 - **Location:** `app.py`:
   ```python
@@ -311,11 +313,11 @@ cards_html += f'''
   ...
   return "Notice"
 
-  return "Notice"   # ← second `return "Notice"` is unreachable
+  return "Notice"   # â† second `return "Notice"` is unreachable
   ```
 - **Fix:** Delete the second `return "Notice"`.
 
-#### P3-04 — `is_allowed_url()` accepts `http://` (not just `https://`)
+#### P3-04 â€” `is_allowed_url()` accepts `http://` (not just `https://`)
 
 - **Location:** `app.py`:
   ```python
@@ -325,9 +327,9 @@ cards_html += f'''
 - **Impact:** Even on the legitimate domain, a TLS-stripping MITM (e.g., a coffee-shop Wi-Fi with a captive portal) can serve a malicious PDF that the analyzer will dutifully extract text from and possibly pass to a translation API. Low in practice for a public site.
 - **Fix:** Restrict to `'https'` only.
 
-#### P3-05 — No `Content-Security-Policy`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` on Flask responses
+#### P3-05 â€” No `Content-Security-Policy`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` on Flask responses
 
-- **Location:** `app.py` — no `@app.after_request` handler.
+- **Location:** `app.py` â€” no `@app.after_request` handler.
 - **Impact:** Defense-in-depth missing. If Jinja2 ever gets a bypass, there's no CSP to fall back on.
 - **Fix:**
   ```python
@@ -340,35 +342,35 @@ cards_html += f'''
       return resp
   ```
 
-#### P3-06 — No CSRF token on `POST /api/sync` or `POST /api/analyze`
+#### P3-06 â€” No CSRF token on `POST /api/sync` or `POST /api/analyze`
 
-- **Location:** Both routes accept JSON bodies; CORS is implicit (no headers, so same-origin only — which actually *helps* here). But the routes are state-changing and unauthenticated.
+- **Location:** Both routes accept JSON bodies; CORS is implicit (no headers, so same-origin only â€” which actually *helps* here). But the routes are state-changing and unauthenticated.
 - **Impact:** Combined with P1-02, an attacker can host a malicious page that auto-POSTs to your `/api/sync` to trigger an outbound request to Galgotias from your visitors' machines (CSRF as outbound DoS).
-- **Fix:** Either require a custom header (`X-Requested-With: XMLHttpRequest`) — which a browser will not send cross-origin without CORS — or add a CSRF token. The custom-header trick is the cheaper fix here since CORS isn't enabled.
+- **Fix:** Either require a custom header (`X-Requested-With: XMLHttpRequest`) â€” which a browser will not send cross-origin without CORS â€” or add a CSRF token. The custom-header trick is the cheaper fix here since CORS isn't enabled.
 
-#### P3-07 — `pdfplumber.open(io.BytesIO(content))` — full PDF in memory
+#### P3-07 â€” `pdfplumber.open(io.BytesIO(content))` â€” full PDF in memory
 
 - **Location:** `download_pdf()`.
 - **Impact:** Multiplies the OOM risk in P1-01. A 500 MB "PDF" response consumes 500 MB of RSS *before* pdfplumber even tries to parse it.
 - **Fix:** Cap with `MAX_PDF_BYTES` and stream (see P1-01 fix).
 
-#### P3-08 — `MAX_ANNOUNCEMENTS = 470` and `MAX_ANNOUNCEMENTS` literal duplicated in `generate_static.py`
+#### P3-08 â€” `MAX_ANNOUNCEMENTS = 470` and `MAX_ANNOUNCEMENTS` literal duplicated in `generate_static.py`
 
 - **Location:** Both files.
 - **Impact:** If you change the cap in one place, the static-site output silently disagrees with the live app. Not a security issue, but it produces inconsistent UX.
 - **Fix:** Centralize in a `config.py`.
 
-#### P3-09 — GitHub Actions `softprops/action-gh-release@v1` is unmaintained and `@v1` is unpinned
+#### P3-09 â€” GitHub Actions `softprops/action-gh-release@v1` is unmaintained and `@v1` is unpinned
 
 - **Location:** `.github/workflows/build-release.yml`
-- **Impact:** Tag-pinned actions drift; using `@v1` (or any unpinned major) means a compromised action maintainer can push malicious code that runs on your tagged-release builds with `contents: write`. This is the supply-chain class of CVE-2024-… events from late 2024/early 2025.
+- **Impact:** Tag-pinned actions drift; using `@v1` (or any unpinned major) means a compromised action maintainer can push malicious code that runs on your tagged-release builds with `contents: write`. This is the supply-chain class of CVE-2024-â€¦ events from late 2024/early 2025.
 - **Fix:** Pin to a SHA: `softprops/action-gh-release@dec0d2cbf5e635e9b303d6e9bfe36c1915fd0951` (the SHA corresponding to v2).
 
 ---
 
-### ⚪ P4 — Informational / Hygiene
+### âšª P4 â€” Informational / Hygiene
 
-#### P4-01 — `errorDetails.message` (and raw exception text) returned to the client via `/api/analyze`
+#### P4-01 â€” `errorDetails.message` (and raw exception text) returned to the client via `/api/analyze`
 
 - **Location:** `app.py`:
   ```python
@@ -378,7 +380,7 @@ cards_html += f'''
 - **Why this matters:** Python exceptions frequently contain file paths, library versions, and snippets of attacker-influenced data (e.g., the URL they POSTed). Useful for fingerprinting.
 - **Fix:** Log full traceback server-side; return a generic `"error": "analysis failed"` to the client.
 
-#### P4-02 — React app (`cinema-scanner-/src/App.jsx`) embeds Gemini API key in client URL
+#### P4-02 â€” React app (`cinema-scanner-/src/App.jsx`) embeds Gemini API key in client URL
 
 - **Location:**
   ```javascript
@@ -392,20 +394,20 @@ cards_html += f'''
   - The `Referer` header of any subresource fetched by Google's response (mitigatable with `Referrer-Policy: no-referrer`).
 - **Fix:** Use a backend proxy. At minimum, set the Gemini key's HTTP referer restriction in Google AI Studio to your domain.
 
-#### P4-03 — `googletrans.Translator()` instantiated at module import time
+#### P4-03 â€” `googletrans.Translator()` instantiated at module import time
 
 - **Location:** `app.py`:
   ```python
   try:
       from googletrans import Translator
-      translator = Translator()       # ← at import time
+      translator = Translator()       # â† at import time
       TRANSLATOR_AVAILABLE = True
   except ImportError:
       TRANSLATOR_AVAILABLE = False
   ```
 - **Impact:** Any exception during `Translator()` construction (network probe, etc.) will crash the Flask app at startup. Wrap in try/except or defer construction.
 
-#### P4-04 — Service Worker referenced but never shipped
+#### P4-04 â€” Service Worker referenced but never shipped
 
 - **Location:** `templates/index.html`:
   ```javascript
@@ -416,13 +418,13 @@ cards_html += f'''
 - **No `/sw.js` exists** in the bundle. The `.catch(() => {})` masks the 404 silently. Harmless but generates noise in DevTools.
 - **Fix:** Remove the block, or actually ship a service worker if PWA is a goal.
 
-#### P4-05 — Google Docs Viewer proxy in `templates/index.html` and `generate_static.py` leaks PDF URLs to Google
+#### P4-05 â€” Google Docs Viewer proxy in `templates/index.html` and `generate_static.py` leaks PDF URLs to Google
 
 - **Location:** Both, in `openPdf()` / equivalent.
 - **Impact:** Every PDF the user clicks is fetched by Google; the URL is logged by Google's viewer infrastructure. For public university PDFs this is fine; for any sensitive document it's a privacy leak.
 - **Fix:** Acceptable for public PDFs; flag in the UI ("Viewing via Google Docs Viewer") for transparency.
 
-#### P4-06 — `os.makedirs(OUTPUT_DIR, exist_ok=True)` in `generate_static.py` writes into the repo working directory
+#### P4-06 â€” `os.makedirs(OUTPUT_DIR, exist_ok=True)` in `generate_static.py` writes into the repo working directory
 
 - **Location:** `generate_static.py` `main()`.
 - **Impact:** In CI (GitHub Actions), this writes into the checkout, which is fine. Locally, it writes to wherever you ran it from. Predictable but worth noting.
@@ -433,30 +435,30 @@ cards_html += f'''
 
 | # | Finding | Severity | One-line fix |
 |---|---|---|---|
-| P1-01 | `/api/analyze` size/rate | 🟠 High | Cap at 25 MB, add `flask-limiter`, stream chunks |
-| P1-02 | `/api/sync` unauth abuse | 🟠 High | Require shared-secret header + rate limit |
-| P1-03 | `googletrans==4.0.0-rc1` pin | 🟠 High | Replace with `deep-translator` or drop the feature |
-| P2-01 | `Alvido` plaintext "secret" | 🟡 Med | Delete the README section + dead code branch |
-| P2-02 | `FLASK_DEBUG` env knob | 🟡 Med | Hard-code `debug=False`, delete the env var |
-| P2-03 | Unbounded executor queue | 🟡 Med | Bound queue, propagate exceptions to logger |
-| P2-04 | SQLite lock contention | 🟡 Med | Enable WAL mode, set `timeout=10` |
-| P2-05 | Unbounded PDF text | 🟡 Med | Cap per-page + total text length |
-| P2-06 | Unbounded search query | 🟡 Med | Cap query at 500 chars, 32 tokens |
-| P2-07 | Static-gen missing escape | 🟡 Med | Use `html.escape()` for `category` and `desc` |
-| P3-01 | Dead imports | 🟢 Low | Remove `threading`, `tempfile` |
-| P3-02 | Duplicate `return "Notice"` | 🟢 Low | Delete unreachable line |
-| P3-03 | `is_allowed_url` allows http | 🟢 Low | Restrict to `https` only |
-| P3-04 | No security headers | 🟢 Low | Add `@app.after_request` CSP/XCTO/Referrer-Policy |
-| P3-05 | No CSRF on state-changing POSTs | 🟢 Low | Require `X-Requested-With` header |
-| P3-06 | `pdfplumber` reads full PDF | 🟢 Low | Stream with size cap (see P1-01) |
-| P3-07 | `MAX_ANNOUNCEMENTS` duplicated | 🟢 Low | Centralize in `config.py` |
-| P3-08 | Unpinned GH action | 🟢 Low | Pin `softprops/action-gh-release` to SHA |
-| P4-01 | Raw exception in JSON response | ⚪ Info | Log full traceback; return generic error |
-| P4-02 | Gemini key in browser URL | ⚪ Info | Add `Referrer-Policy: no-referrer` minimum |
-| P4-03 | `Translator()` at import time | ⚪ Info | Move to lazy init inside `translate_text()` |
-| P4-04 | `/sw.js` referenced, not shipped | ⚪ Info | Remove the registration block |
-| P4-05 | Google Docs Viewer proxy | ⚪ Info | Add UI disclosure |
-| P4-06 | Output dir = cwd | ⚪ Info | Pass via env var |
+| P1-01 | `/api/analyze` size/rate | ðŸŸ  High | Cap at 25 MB, add `flask-limiter`, stream chunks |
+| P1-02 | `/api/sync` unauth abuse | ðŸŸ  High | Require shared-secret header + rate limit |
+| P1-03 | `googletrans==4.0.0-rc1` pin | ðŸŸ  High | Replace with `deep-translator` or drop the feature |
+| P2-01 | `Alvido` plaintext "secret" | ðŸŸ¡ Med | Delete the README section + dead code branch |
+| P2-02 | `FLASK_DEBUG` env knob | ðŸŸ¡ Med | Hard-code `debug=False`, delete the env var |
+| P2-03 | Unbounded executor queue | ðŸŸ¡ Med | Bound queue, propagate exceptions to logger |
+| P2-04 | SQLite lock contention | ðŸŸ¡ Med | Enable WAL mode, set `timeout=10` |
+| P2-05 | Unbounded PDF text | ðŸŸ¡ Med | Cap per-page + total text length |
+| P2-06 | Unbounded search query | ðŸŸ¡ Med | Cap query at 500 chars, 32 tokens |
+| P2-07 | Static-gen missing escape | ðŸŸ¡ Med | Use `html.escape()` for `category` and `desc` |
+| P3-01 | Dead imports | ðŸŸ¢ Low | Remove `threading`, `tempfile` |
+| P3-02 | Duplicate `return "Notice"` | ðŸŸ¢ Low | Delete unreachable line |
+| P3-03 | `is_allowed_url` allows http | ðŸŸ¢ Low | Restrict to `https` only |
+| P3-04 | No security headers | ðŸŸ¢ Low | Add `@app.after_request` CSP/XCTO/Referrer-Policy |
+| P3-05 | No CSRF on state-changing POSTs | ðŸŸ¢ Low | Require `X-Requested-With` header |
+| P3-06 | `pdfplumber` reads full PDF | ðŸŸ¢ Low | Stream with size cap (see P1-01) |
+| P3-07 | `MAX_ANNOUNCEMENTS` duplicated | ðŸŸ¢ Low | Centralize in `config.py` |
+| P3-08 | Unpinned GH action | ðŸŸ¢ Low | Pin `softprops/action-gh-release` to SHA |
+| P4-01 | Raw exception in JSON response | âšª Info | Log full traceback; return generic error |
+| P4-02 | Gemini key in browser URL | âšª Info | Add `Referrer-Policy: no-referrer` minimum |
+| P4-03 | `Translator()` at import time | âšª Info | Move to lazy init inside `translate_text()` |
+| P4-04 | `/sw.js` referenced, not shipped | âšª Info | Remove the registration block |
+| P4-05 | Google Docs Viewer proxy | âšª Info | Add UI disclosure |
+| P4-06 | Output dir = cwd | âšª Info | Pass via env var |
 
 ---
 
@@ -468,13 +470,13 @@ cards_html += f'''
    - Delete the `Alvido` block in `app.py` and the README section (P2-01).
    - Hard-pin `debug=False` (P2-02).
 
-2. **Reliability (2–3 hours):**
+2. **Reliability (2â€“3 hours):**
    - Replace `googletrans==4.0.0-rc1` (P1-03).
    - Enable WAL mode + bound query lengths (P2-04, P2-06).
    - Bound PDF text length (P2-05).
    - Add `html.escape()` in `generate_static.py` (P2-07).
 
-3. **Defense in depth (1–2 hours):**
+3. **Defense in depth (1â€“2 hours):**
    - Security headers via `@app.after_request` (P3-04).
    - CSRF trick via `X-Requested-With` (P3-05).
    - Pin GitHub Actions to SHAs (P3-08).
@@ -484,7 +486,7 @@ cards_html += f'''
 
 ---
 
-## 6. Appendix — Locations Summary
+## 6. Appendix â€” Locations Summary
 
 | Finding | File | Line region |
 |---|---|---|
@@ -517,15 +519,18 @@ cards_html += f'''
 
 ## 7. Things That Are Correct (don't change them)
 
-For balance — these were checked and are fine:
+For balance â€” these were checked and are fine:
 
-- ✅ **SQL injection:** All SQLite queries use parameterized `?` placeholders. No string interpolation into SQL anywhere.
-- ✅ **Jinja2 auto-escaping:** `{{ item.title }}`, `{{ item.date_text }}`, `{{ item.url }}` in `templates/index.html` are HTML-escaped by Jinja2's default. No `|safe` filter used.
-- ✅ **SSRF allowlist correctness:** `is_allowed_url()` correctly handles the `@`-in-URL and subdomain-suffix bypass classes. Tested `https://galgotiasuniversity.edu.in@evil.com/`, `https://www.galgotiasuniversity.edu.in.evil.com/`, and port-based variants — all correctly blocked.
-- ✅ **PDF content validation:** `download_pdf` checks both Content-Type header, URL extension, and the `%PDF-` magic bytes before returning. A response claiming to be a PDF but actually serving HTML is filtered out.
-- ✅ **ReDoS:** All regex patterns in `app.py` were checked for catastrophic backtracking. None are vulnerable.
-- ✅ **React XSS:** `cinema-scanner-/src/App.jsx` does not use `dangerouslySetInnerHTML`. The Gemini response is parsed as JSON and rendered via React state, which escapes by default.
+- âœ… **SQL injection:** All SQLite queries use parameterized `?` placeholders. No string interpolation into SQL anywhere.
+- âœ… **Jinja2 auto-escaping:** `{{ item.title }}`, `{{ item.date_text }}`, `{{ item.url }}` in `templates/index.html` are HTML-escaped by Jinja2's default. No `|safe` filter used.
+- âœ… **SSRF allowlist correctness:** `is_allowed_url()` correctly handles the `@`-in-URL and subdomain-suffix bypass classes. Tested `https://galgotiasuniversity.edu.in@evil.com/`, `https://www.galgotiasuniversity.edu.in.evil.com/`, and port-based variants â€” all correctly blocked.
+- âœ… **PDF content validation:** `download_pdf` checks both Content-Type header, URL extension, and the `%PDF-` magic bytes before returning. A response claiming to be a PDF but actually serving HTML is filtered out.
+- âœ… **ReDoS:** All regex patterns in `app.py` were checked for catastrophic backtracking. None are vulnerable.
+- âœ… **React XSS:** `cinema-scanner-/src/App.jsx` does not use `dangerouslySetInnerHTML`. The Gemini response is parsed as JSON and rendered via React state, which escapes by default.
 
 ---
 
 **End of report.**
+
+
+# STATUS (2026-06-23): Every finding in this audit has been remediated in the current main branch. See docs/FINAL_REPORT.md for the per-commit fix map.
